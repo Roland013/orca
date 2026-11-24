@@ -93,9 +93,13 @@ async function workBlocksHandover(
     return null
   }
   const reason = blocked.code === 'agent_session_operation_invalid' ? blocked.details?.reason : null
-  return reason && WORK_REASONS.has(reason)
-    ? (reason as AiVaultChatTerminalHandoverRefusal)
-    : 'busy'
+  return isWorkReason(reason) ? reason : 'busy'
+}
+
+function isWorkReason(
+  reason: string | null | undefined
+): reason is AiVaultChatTerminalHandoverRefusal {
+  return reason != null && WORK_REASONS.has(reason)
 }
 
 /** The terminal is admitted by the same rule as any same-id resume: the head's owner exited. */
