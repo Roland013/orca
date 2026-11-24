@@ -211,7 +211,8 @@ export function assertLegacyAiVaultResumeAllowed(args: AiVaultPrepareSessionResu
   if (blocking) {
     refuseLegacyWriter(blocking)
   }
-  owners.forEach(fenceAdmittedResume)
+  // The terminal writes before its hooks report; until then the chat must not start a second writer.
+  owners.forEach(({ provider, key }) => terminalHandoverFences.hold(provider, key))
 }
 
 export async function assertLegacyAiVaultResumeCommandAllowed(
@@ -226,19 +227,13 @@ export async function assertLegacyAiVaultResumeCommandAllowed(
   const resumed = listOwnership().filter((ownership) =>
     invocations.some((invocation) => resumesOwnedSession(invocation, ownership))
   )
-  const blocking = resumed.find(terminalResumeBlocked)
+  // A targetless resume may open any of them, so no fence could name the one it writes.
+  const targetless = invocations.some((invocation) => invocation.target === null)
+  const blocking = resumed.find((ownership) => targetless || terminalResumeBlocked(ownership))
   if (blocking) {
     refuseLegacyWriter(blocking)
   }
-  resumed.forEach(fenceAdmittedResume)
-}
-
-/** An admitted same-id resume writes the chat's conversation before its hooks report; until then
- *  the chat must not start a second writer. */
-function fenceAdmittedResume(ownership: StructuredProviderSessionOwnership): void {
-  if (ownership.role === 'head') {
-    terminalHandoverFences.hold(ownership.provider, ownership.key)
-  }
+  resumed.forEach(({ provider, key }) => terminalHandoverFences.hold(provider, key))
 }
 
 export function findResumeOwnership(
