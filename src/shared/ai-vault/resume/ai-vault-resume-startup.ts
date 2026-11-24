@@ -215,6 +215,21 @@ export function buildAiVaultLocalResumeStartup(
 export function buildAiVaultForkStartup(
   args: AiVaultResumeStartupArgs
 ): AiVaultResumeStartup | null {
+  return buildAiVaultChatTakeoverStartup(args, true)
+}
+
+/** A chat's own conversation once its agent exited: a plain resume that carries the provider
+ *  session, so a cold restore resumes this id and not a copy. */
+export function buildAiVaultHandoverStartup(
+  args: AiVaultResumeStartupArgs
+): AiVaultResumeStartup | null {
+  return buildAiVaultChatTakeoverStartup(args, false)
+}
+
+function buildAiVaultChatTakeoverStartup(
+  args: AiVaultResumeStartupArgs,
+  fork: boolean
+): AiVaultResumeStartup | null {
   const { session, settings } = args
   const { platform, codexHome, liveShell } = args.host
   const providerSession = getAiVaultAgentProviderSession({
@@ -239,7 +254,7 @@ export function buildAiVaultForkStartup(
     ),
     agentEnv: resolveTuiAgentLaunchEnv(session.agent, settings, platform),
     resumeInLaunchCwd: true,
-    fork: true
+    fork
   })
   if (!plan) {
     return null
@@ -255,7 +270,8 @@ export function buildAiVaultForkStartup(
     ...(plan.env ? { env: plan.env } : {}),
     ...realHomeCodexResumeEnvDeletion(session),
     ...(session.cwd ? { cwd: session.cwd } : {}),
-    launchConfig: plan.launchConfig
+    launchConfig: plan.launchConfig,
+    ...(fork ? {} : { providerSession })
   }
 }
 

@@ -5714,6 +5714,14 @@
             "filePathsCannotContainEmptySegments": "File paths cannot contain empty segments.",
             "filePathsCannotContainDotSegments": "File paths cannot contain . or .. segments.",
             "filePathsCannotContainTildeSegments": "File paths cannot contain ~ segments."
+          },
+          "nativeChatTerminalHandover": {
+            "turnActive": "{{agent}} is still working. Continue in terminal when this turn ends.",
+            "promptPending": "Answer the pending question or approval first.",
+            "backgroundTasksRunning": "Wait for background tasks to finish, or stop them, first.",
+            "messagesUnsettled": "Wait for queued or unsent messages to be delivered first.",
+            "stopUnproven": "Orca couldn't confirm the chat's agent stopped. Try again.",
+            "busy": "This chat is busy. Continue in terminal when it is idle."
           }
         }
       },

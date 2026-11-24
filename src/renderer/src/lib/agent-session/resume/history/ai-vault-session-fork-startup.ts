@@ -5,6 +5,7 @@ import {
 import {
   assertAiVaultCopiedSessionStoreAllowed,
   buildAiVaultForkStartup,
+  buildAiVaultHandoverStartup,
   buildAiVaultLocalResumeStartup,
   type AiVaultResumeLaunchSettings,
   type AiVaultResumeStartup
@@ -53,9 +54,11 @@ export async function readAiVaultCliForkLaunchSettings(args: {
   return hostSettings
 }
 
+/** `sameConversation`: the chat's agent exited, so the terminal resumes its own conversation. */
 export function buildAiVaultCliForkStartupForWorktree(
   args: CliForkWorktreeArgs & {
     copied: boolean
+    sameConversation?: boolean
     owner: WebSessionIntentOwner | null
     settings: AiVaultResumeLaunchSettings | null | undefined
   }
@@ -65,6 +68,9 @@ export function buildAiVaultCliForkStartupForWorktree(
     throw conversationHostUnavailableError()
   }
   const startupArgs = { session, host: resolveAiVaultResumeHost(args), settings }
+  if (args.sameConversation) {
+    return buildAiVaultHandoverStartup(startupArgs)
+  }
   if (args.copied) {
     assertAiVaultCopiedSessionLaunchAllowed(args)
     return {

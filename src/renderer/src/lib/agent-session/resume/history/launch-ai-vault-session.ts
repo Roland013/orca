@@ -6,7 +6,11 @@ import {
   getKnownExecutionHostIdForWorktree,
   runtimeEnvironmentIdOrLocalUnlessTwin
 } from '@/lib/workspace/ownership/worktree-runtime-owner'
-import { getSavedTerminalSessionName } from '@/lib/agent-session/history/session-names/terminal-session-names'
+import {
+  getSavedTerminalSessionName,
+  normalizeTerminalSessionName
+} from '@/lib/agent-session/history/session-names/terminal-session-names'
+import { insertUnifiedTabAfterAnchor } from '@/lib/workspace/tabs/unified-tab-anchor-insertion'
 import { setWebRuntimeTabProps } from '@/runtime/hosted-terminals/actions/web-runtime-tab-properties'
 import { createWebRuntimeSessionTerminal } from '@/runtime/hosted-terminals/creation/web-runtime-terminal-creation'
 import { isWebRuntimeSessionActive } from '@/runtime/web-session-tabs-sync/identity/web-runtime-session-environment'
@@ -33,9 +37,13 @@ export function launchAiVaultSessionInNewTab(args: {
   providerSession?: AgentProviderSessionMetadata
   targetGroupId?: string
   splitDirection?: TabSplitDirection
+  /** The tab this one replaces: the new tab takes its place in the group. Local tabs only. */
+  afterTabId?: string
+  /** The replaced tab's visible name, kept over a name saved for the session. */
+  title?: string
 }): LaunchAiVaultSessionInNewTabResult {
   const store = useAppStore.getState()
-  const savedName = savedNameForResume(store, args)
+  const savedName = normalizeTerminalSessionName(args.title) || savedNameForResume(store, args)
   // Why both paths split: the runtime path used to return first and drop the split (#22791).
   const split =
     args.splitDirection && args.targetGroupId
@@ -108,6 +116,9 @@ export function launchAiVaultSessionInNewTab(args: {
   store.setActiveTabType('terminal', args.worktreeId)
 
   persistAgentLaunchTabOrder(args.worktreeId, tab.id)
+  if (args.afterTabId) {
+    insertUnifiedTabAfterAnchor(args.worktreeId, tab.id, args.afterTabId)
+  }
 
   return { tabId: tab.id }
 }

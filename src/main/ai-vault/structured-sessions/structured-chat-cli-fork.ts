@@ -48,9 +48,11 @@ export function isStructuredChatCliForkSourceCurrent(
   )
 }
 
+/** `sameConversation`: the terminal takes over the chat's own conversation instead of a copy. */
 export async function prepareStructuredChatCliFork(
   args: AiVaultPrepareChatForkArgs,
-  prepare: AiVaultSessionResumePreparation
+  prepare: AiVaultSessionResumePreparation,
+  options: { sameConversation?: true } = {}
 ): Promise<AiVaultPrepareSessionResumeResult> {
   const host = getStructuredAgentSessionHost()
   const record =
@@ -166,7 +168,7 @@ export async function prepareStructuredChatCliFork(
     filePath,
     codexHome,
     executionHostId: LOCAL_EXECUTION_HOST_ID,
-    fork: true
+    fork: !options.sameConversation
   })
   const preparedHome = result.useRealCodexHome ? null : (result.substituteCodexHome ?? codexHome)
   if (codexHome && (result.useRealCodexHome || result.substituteCodexHome)) {

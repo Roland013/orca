@@ -1,11 +1,15 @@
 import { AiVaultPrepareSessionResumeParams } from '../../../shared/rpc-contract/ai-vault/ai-vault-params'
 import { prepareStructuredChatCliFork } from '../../ai-vault/structured-sessions/structured-chat-cli-fork'
 import { ipcMain } from 'electron'
+import { z } from 'zod'
 import type {
+  AiVaultChatTerminalHandoverResult,
   AiVaultPrepareSessionResumeRequest,
   AiVaultPrepareSessionResumeResult,
   AiVaultSessionResumePreparation
 } from '../../../shared/ai-vault/resume/ai-vault-resume-preparation'
+import { prepareStructuredChatTerminalHandover } from '../../ai-vault/structured-sessions/structured-chat-terminal-handover'
+import { terminalHandoverFences } from '../../native-chat/conversation-adoption/structured-terminal-handover-fence'
 import {
   isUnresolvedOwnerHostId,
   parseExecutionHostId
@@ -36,7 +40,32 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
   ipcMain.handle('aiVault:prepareSessionHandoff', (_event, args: AiVaultSessionHandoffArgs) =>
     prepareAiVaultSessionHandoff(args)
   )
+  // This desktop's own chats only; paired hosts keep the fork until they advertise this.
+  ipcMain.handle(
+    'aiVault:prepareChatTerminalHandover',
+    async (_event, args: unknown): Promise<AiVaultChatTerminalHandoverResult> => {
+      const { sourceChat } = AiVaultChatTerminalHandoverParams.parse(args)
+      await options.ensureStructuredSessionOwnership?.()
+      return prepareStructuredChatTerminalHandover(
+        sourceChat,
+        options.prepareSessionResume ?? (async () => ({ useRealCodexHome: false }))
+      )
+    }
+  )
+  ipcMain.handle('aiVault:releaseChatTerminalHandover', (_event, handoverId: unknown) => {
+    if (typeof handoverId === 'string') {
+      terminalHandoverFences.release(handoverId)
+    }
+  })
 }
+
+const AiVaultChatTerminalHandoverParams = z
+  .object({
+    sourceChat: z
+      .object({ sessionId: z.string().min(1).max(512), workspaceId: z.string().min(1).max(512) })
+      .strict()
+  })
+  .strict()
 
 export async function prepareAiVaultSessionResume(
   args: AiVaultPrepareSessionResumeRequest,

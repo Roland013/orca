@@ -60,6 +60,10 @@ export const aiVaultApi = {
     ipcRenderer.invoke('aiVault:prepareSessionResume', args),
   prepareSessionHandoff: (args: AiVaultSessionHandoffArgs) =>
     ipcRenderer.invoke('aiVault:prepareSessionHandoff', args),
+  prepareChatTerminalHandover: (args: { sourceChat: { sessionId: string; workspaceId: string } }) =>
+    ipcRenderer.invoke('aiVault:prepareChatTerminalHandover', args),
+  releaseChatTerminalHandover: (handoverId: string): Promise<void> =>
+    ipcRenderer.invoke('aiVault:releaseChatTerminalHandover', handoverId),
   listSubagentSessions: (args: AiVaultSubagentListArgs) =>
     ipcRenderer.invoke('aiVault:listSubagentSessions', args),
   getFirstUserPrompt: (args: AiVaultFirstUserPromptArgs) =>

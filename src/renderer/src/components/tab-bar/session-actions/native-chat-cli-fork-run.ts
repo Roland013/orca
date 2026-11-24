@@ -1,7 +1,11 @@
 import { useSyncExternalStore } from 'react'
 import { useAppStore } from '@/store/index'
 import { readIpcErrorMessage } from '@/runtime/errors/ipc-error'
-import type { ExecutionHostId } from '../../../../../shared/execution-host/execution-host'
+import {
+  parseExecutionHostId,
+  type ExecutionHostId
+} from '../../../../../shared/execution-host/execution-host'
+import { runNativeChatTerminalHandover } from './native-chat-terminal-handover-run'
 import { prepareNativeChatCliFork } from '@/lib/agent-session/resume/cli-fork/native-chat-cli-fork-preparation'
 import type { NativeChatCliForkSubject } from '@/lib/agent-session/resume/cli-fork/native-chat-cli-fork-preparation'
 import {
@@ -191,6 +195,19 @@ export async function runNativeChatCliFork(args: {
       localSettings: useAppStore.getState().settings,
       signal: controller.signal
     })
+    if (
+      parseExecutionHostId(subject.request.executionHostScope)?.kind === 'local' &&
+      (await runNativeChatTerminalHandover({
+        subject,
+        tab,
+        agent: args.agent,
+        settings,
+        isCurrent,
+        beforeLaunch: stop
+      })) === 'handled'
+    ) {
+      return
+    }
     const prepared = await prepareNativeChatCliFork(subject, {
       pairingRevision: owner?.pairingRevision,
       isCurrent,

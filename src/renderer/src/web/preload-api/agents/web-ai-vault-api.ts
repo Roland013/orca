@@ -110,6 +110,9 @@ export function createWebAiVaultApi(): NonNullable<Partial<PreloadApi>['aiVault'
     cancelListSessions: () => Promise.resolve(),
     prepareSessionResume: (args: AiVaultPrepareSessionResumeRequest) =>
       callRuntimeResult<AiVaultPrepareSessionResumeResult>('aiVault.prepareSessionResume', args),
+    // A browser's chats run on its paired runtime, which keeps the fork for now.
+    prepareChatTerminalHandover: () => Promise.resolve({ kind: 'unsupported' as const }),
+    releaseChatTerminalHandover: () => Promise.resolve(),
     // A browser reaches only its own paired runtime; an older one leaves the preview hand-off.
     prepareSessionHandoff: async (args: AiVaultSessionHandoffArgs) => {
       if (!addressesOwnRuntime(args.executionHostId)) {

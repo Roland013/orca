@@ -24,6 +24,7 @@ import type {
   AiVaultSessionTitlesResult
 } from '../../../shared/ai-vault/contracts/ai-vault-session-title'
 import type {
+  AiVaultChatTerminalHandoverResult,
   AiVaultPrepareSessionResumeRequest,
   AiVaultPrepareSessionResumeResult
 } from '../../../shared/ai-vault/resume/ai-vault-resume-preparation'
@@ -57,6 +58,12 @@ export type AiVaultApi = {
   prepareSessionResume: (
     args: AiVaultPrepareSessionResumeRequest
   ) => Promise<AiVaultPrepareSessionResumeResult>
+  /** Stops this desktop's idle chat so a terminal can resume its own conversation. */
+  prepareChatTerminalHandover: (args: {
+    sourceChat: { sessionId: string; workspaceId: string }
+  }) => Promise<AiVaultChatTerminalHandoverResult>
+  /** Lets the chat start again when its terminal never launched. */
+  releaseChatTerminalHandover: (handoverId: string) => Promise<void>
   /** Saves a database-backed session's full conversation on its own host for a hand-off. */
   prepareSessionHandoff: (args: AiVaultSessionHandoffArgs) => Promise<AiVaultSessionHandoffResult>
   listSubagentSessions: (args: AiVaultSubagentListArgs) => Promise<AiVaultSubagentListResult>
