@@ -43,6 +43,7 @@ import {
 import { STRUCTURED_AGENT_RUNTIME_METADATA } from '../../runtime/agent-session/installation/structured-agent-runtime-metadata'
 import type { StructuredAgentRuntimeMetadata } from '../../runtime/agent-session/installation/structured-agent-runtime-registration-types'
 import { commandName, commandProgramIndex, shellCommands } from './shell-command-words'
+import { terminalHandoverFences } from '../../native-chat/conversation-adoption/structured-terminal-handover-fence'
 
 /** Hide chat-owned rows from clients unable to open that agent’s chat. */
 export type StructuredChatOpener = (agent: StructuredAgentId) => boolean
@@ -202,10 +203,15 @@ function acquiredAccountHome(sessionId: string): AgentSessionAccountHome | undef
 
 export function assertLegacyAiVaultResumeAllowed(args: AiVaultPrepareSessionResumeArgs): void {
   // A fork writes a new conversation, and preparing its home never writes this one.
-  const blocking = args.fork ? undefined : resumeOwnerships(args).find(terminalResumeBlocked)
+  if (args.fork) {
+    return
+  }
+  const owners = resumeOwnerships(args)
+  const blocking = owners.find(terminalResumeBlocked)
   if (blocking) {
     refuseLegacyWriter(blocking)
   }
+  owners.forEach(fenceAdmittedResume)
 }
 
 export async function assertLegacyAiVaultResumeCommandAllowed(
@@ -217,13 +223,21 @@ export async function assertLegacyAiVaultResumeCommandAllowed(
     return
   }
   await ensureStructuredAgentSessionHostUnlessRefused(ensureHost)
-  for (const ownership of listOwnership()) {
-    if (
-      terminalResumeBlocked(ownership) &&
-      invocations.some((invocation) => resumesOwnedSession(invocation, ownership))
-    ) {
-      refuseLegacyWriter(ownership)
-    }
+  const resumed = listOwnership().filter((ownership) =>
+    invocations.some((invocation) => resumesOwnedSession(invocation, ownership))
+  )
+  const blocking = resumed.find(terminalResumeBlocked)
+  if (blocking) {
+    refuseLegacyWriter(blocking)
+  }
+  resumed.forEach(fenceAdmittedResume)
+}
+
+/** An admitted same-id resume writes the chat's conversation before its hooks report; until then
+ *  the chat must not start a second writer. */
+function fenceAdmittedResume(ownership: StructuredProviderSessionOwnership): void {
+  if (ownership.role === 'head') {
+    terminalHandoverFences.hold(ownership.provider, ownership.key)
   }
 }
 

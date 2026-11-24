@@ -61,9 +61,10 @@ export function agentSessionLeasePossiblyWriting(lease: AgentSessionOwnerObserva
   return agentSessionOwnerObservationVerdict(lease) !== 'exited'
 }
 
-/** Agents whose chats let a terminal resume the same conversation once the chat stopped writing. */
-export function sameIdTerminalResumeEnabled(_provider: StructuredAgentId): boolean {
-  return false
+/** Agents whose chats let a terminal resume the same conversation once the chat stopped writing.
+ *  Claude's `--resume` keeps the id, and its chat refuses to start while a terminal writes it. */
+export function sameIdTerminalResumeEnabled(provider: StructuredAgentId): boolean {
+  return provider === 'claude'
 }
 
 /** Whether a terminal resume of this link's conversation is refused. */

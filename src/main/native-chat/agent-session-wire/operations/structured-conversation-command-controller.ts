@@ -8,13 +8,17 @@ import { runStructuredCompaction } from './structured-conversation-compaction'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import type { StructuredAgentSessionCaller } from '../host/structured-agent-session-host-types'
 import type { StructuredAgentSessionHost } from '../host/structured-agent-session-host'
+import { handOverStructuredChatToTerminal } from './structured-terminal-handover'
 
 export class StructuredConversationCommandController {
   /** Clear changes send context; compaction instead queues ahead of later sends. */
   readonly pending = new Map<string, { key: string; count: number }>()
   constructor(
     private readonly context: () => StructuredAgentSessionMutationContext,
-    private readonly host: Pick<StructuredAgentSessionHost, 'waitForSendSettlement'>
+    private readonly host: Pick<
+      StructuredAgentSessionHost,
+      'waitForSendSettlement' | 'releaseIdleSession'
+    >
   ) {}
   /** Refuse only first-run sends during clear; recorded IDs still replay their answers. */
   send = (
@@ -24,6 +28,17 @@ export class StructuredConversationCommandController {
     sendStructuredAgentSessionTurn(this.context(), caller, params, {
       clearInFlight: this.pending.has(params.envelope.sessionId)
     })
+
+  /** Stop an idle chat's agent with proof it exited, for a terminal to resume its conversation;
+   *  refused, like a second command, while /clear runs. */
+  handOverToTerminal = (sessionId: string, holdFence: () => () => void) =>
+    this.pending.has(sessionId)
+      ? Promise.resolve({ ok: false as const, reason: 'busy' as const })
+      : handOverStructuredChatToTerminal(
+          { ...this.context(), releaseIdle: (id) => this.host.releaseIdleSession(id, true) },
+          sessionId,
+          holdFence
+        )
 
   run = (caller: StructuredAgentSessionCaller, params: ConversationCommandParams) => {
     if (params.command === 'compact') {

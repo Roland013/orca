@@ -33,6 +33,27 @@ export type AiVaultPrepareSessionResumeRequest =
   | AiVaultPrepareSessionResumeArgs
   | AiVaultPrepareChatForkArgs
 
+/** Why a chat stays a chat; the work reasons match what blocks /clear. */
+export type AiVaultChatTerminalHandoverRefusal =
+  | 'turnActive'
+  | 'promptPending'
+  | 'backgroundTasksRunning'
+  | 'messagesUnsettled'
+  | 'busy'
+  | 'stopUnproven'
+
+/** `ready`: the chat's agent exited and the host holds its start until the terminal reports.
+ *  `unsupported`: this chat's agent or host keeps the fork. */
+export type AiVaultChatTerminalHandoverResult =
+  | { kind: 'unsupported' }
+  | { kind: 'refused'; reason: AiVaultChatTerminalHandoverRefusal }
+  | {
+      kind: 'ready'
+      handoverId: string
+      source: AiVaultChatForkSource
+      conversationName: string | null
+    }
+
 export type AiVaultPrepareSessionResumeResult = {
   useRealCodexHome: boolean
   cliForkSource?: AiVaultChatForkSource

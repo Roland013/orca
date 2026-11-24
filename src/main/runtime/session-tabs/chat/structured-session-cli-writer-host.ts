@@ -9,6 +9,8 @@ import type { EnrichedAgentHookEventPayload } from '../../../agent-hooks/server/
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import { CLI_CONVERSATION_ADOPTING_AGENTS } from '../../../../shared/agent-session/view/structured-agent-cli-conversation-adoption'
 import { recordConversationKey } from '../../../native-chat/conversation-adoption/structured-conversation-key'
+import { terminalHandoverFences } from '../../../native-chat/conversation-adoption/structured-terminal-handover-fence'
+import { agentSessionRefusalError } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
 import type { StructuredAgentCliSourceRoute } from '../../../native-chat/conversation-adoption/structured-agent-cli-source'
 import { OrcaRuntimeWithGetWorktreePs } from '../../workspaces/process-listing/workspace-process-listing'
 
@@ -85,6 +87,11 @@ export abstract class OrcaRuntimeWithStructuredSessionCliWriterHost extends Orca
         agents.includes(record.provider)
       )
     ) {
+      if (terminalHandoverFences.holds(key, () => this.getAgentProviderSessionRows())) {
+        throw agentSessionRefusalError('agent_session_conflict', {
+          reason: 'conversationHeldElsewhere'
+        })
+      }
       await this.assertStructuredAdoptionTerminalWritersExited(record.provider, key.id)
     }
   }

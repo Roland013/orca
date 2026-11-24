@@ -188,6 +188,9 @@ export class StructuredAgentSessionHost {
    *  so does a viewer unless `anyway`. */
   releaseIdleSession = (id: string, anyway?: boolean) => this.lifetime.idleSweep.release(id, anyway)
 
+  /** "Continue in terminal" in place; see StructuredConversationCommandController. */
+  handOverToTerminal = this.conversationCommands.handOverToTerminal
+
   /** Stop hidden children too, using one bounded host snapshot. */
   sleepWorkspace = createStructuredAgentSessionWorkspaceSleeper(() => this.collaborators())
 
@@ -196,9 +199,8 @@ export class StructuredAgentSessionHost {
   supportsCreate = this.reads.supportsCreate
   knownAgentIds = this.reads.knownAgentIds
 
-  private readonly tabs = createTabs(this, this.sessions, this.clientDelivery, (ids) =>
-    this.startup.recover(ids)
-  )
+  private recoverTabs = (ids: readonly string[]) => this.startup.recover(ids)
+  private readonly tabs = createTabs(this, this.sessions, this.clientDelivery, this.recoverTabs)
   listSessionTabs = this.tabs.listSessionTabs
   isSessionTabVisible = this.tabs.isSessionTabVisible
   getPersistedVisibleSessionTabIndex = this.tabs.getPersistedVisibleSessionTabIndex
