@@ -121,6 +121,7 @@ export function publishCommittedPtySpawn(input: PtySpawnCommitInput): PtySpawnOu
       launchConfig: args.launchConfig,
       providerSession: input.resumeArgvDropped ? undefined : args.resumeProviderSession,
       ptyId: result.id,
+      paneKey: input.paneKey,
       connectionId: args.connectionId
     })
   }

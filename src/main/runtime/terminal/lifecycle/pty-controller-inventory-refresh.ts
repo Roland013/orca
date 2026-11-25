@@ -25,6 +25,7 @@ import { indexFloatingSnapshotPtyBindings } from './floating-snapshot-pty-bindin
 import { NO_OBSERVING_PROVIDER_REASON } from '../../../../shared/terminal/pty/lifecycle/pty-liveness-verdict'
 import { buildControllerTerminalIdentities } from './orca-runtime-build-controller-terminal-identities'
 import { retireOrchestrationAuthorityAbsentFromInventory } from '../../orchestration/terminal-authority/runtime-restored-orchestration-authority-sweep'
+import { terminalConversationHolds } from '../../../native-chat/conversation-adoption/structured-terminal-conversation-holds'
 import { worktreeIdsEqual } from '../../../../shared/worktree/id'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/workspace-layout/layout-owner-switch'
 import { exitingPtyIdsOf } from '../adoption/unshown-live-terminal-placement'
@@ -211,6 +212,8 @@ export abstract class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInve
           : null
         pty.controllerTitle = session.title?.trim() || null
         this.mainDaemonAttachments.reconcile(session.id)
+        // A hand-over terminal's process outlived Orca: it holds again before its pane mounts.
+        terminalConversationHolds.reholdPty(session.id)
       }
       // Do not serialize relay probes or let one throw abort inventory cleanup.
       if (inventoryOptions?.refreshForegroundAgents !== false) {

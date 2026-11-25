@@ -1,6 +1,7 @@
 import type { RuntimePtySpawnState } from './spawn-state'
 import { requireAcceptedSpawn } from '../spawn/spawn-outcome'
 import { beginPtySpawn, reportPtyPaneAdoption } from '../spawn/spawn-begin'
+import { holdReattachedTerminalConversation } from '../pane/resumed-conversation-hold'
 
 /** Host reply projection only; acquisition and process lifetime belong to the pane operation. */
 export async function adoptMaterializedRuntimePtySpawn(ctx: RuntimePtySpawnState) {
@@ -16,6 +17,7 @@ export async function adoptMaterializedRuntimePtySpawn(ctx: RuntimePtySpawnState
     throw new Error('terminal_pane_owner_unknown')
   }
   reportPtyPaneAdoption(ctx, adopted)
+  holdReattachedTerminalConversation(adopted.result.id, ctx.args.connectionId)
   return {
     ...adopted.result,
     stablePaneOwner: { handle, tabId: adopted.owner.tabId, leafId: adopted.owner.leafId }
