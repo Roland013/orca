@@ -50,6 +50,7 @@ import {
   recordObservedAgentStatusPaneIdentity
 } from '../../runtime/terminal/identity/agent-status-observed-pane-identity'
 import { bindTerminalPaneStatusLifecycle } from '../../ipc/pty/pane/terminal-pane-status-lifecycle'
+import { terminalConversationHolds } from '../../native-chat/conversation-adoption/structured-terminal-conversation-holds'
 import { startAgentStateRulesLiveUpdates } from '../../runtime/agent-state-rules/agent-state-rules-live-update'
 import { recordDurableCrashBreadcrumb } from '../../crash-reporting/breadcrumbs/durable-crash-breadcrumb'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/workspace-layout/layout-owner-switch'
@@ -142,6 +143,8 @@ export function initializeMainProcessRuntime(
   const disposeIssueLinkTitleFill = wireGitHubIssueLinkTitleFill(store, runtime)
   deps.registerCleanup(disposeIssueLinkTitleFill)
   bindTerminalPaneStatusLifecycle(runtime, store)
+  // Before any pane reattaches: a hand-over terminal's PTY holds its conversation across restarts.
+  void terminalConversationHolds.restore(userDataPath)
   core.runtime = runtime
   providePairedDesktopComputerName(() => runtime.readMachineName())
   installDesktopWorkspaceVmWaker(runtime, () => userDataPath)

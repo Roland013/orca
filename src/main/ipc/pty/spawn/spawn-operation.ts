@@ -28,7 +28,7 @@ import {
   savedResumeRecord,
   savedResumeResult
 } from '../host-env/saved-resume-admission'
-import { holdTerminalResumedConversation } from '../pane/resumed-conversation-hold'
+import { holdReattachedTerminalConversation } from '../pane/resumed-conversation-hold'
 
 type SpawnAdapter<State extends PtySpawnOperationState> = {
   state: State
@@ -101,6 +101,10 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
   const inherit = (adopted: Parameters<typeof adoptedOutcome>[0]) => {
     const outcome = adoptedOutcome(adopted)
     Object.assign(outcome.result, ctx.deps.runtime?.getTerminalLaunchResult?.(outcome.result.id))
+    // A pane adopting its running PTY (a restart's reattach) never reaches complete().
+    if (outcome.kind !== 'registration-exited') {
+      holdReattachedTerminalConversation(outcome.result.id, ctx.args.connectionId)
+    }
     return finish(outcome)
   }
   const complete = async (operation: PaneSpawnOperation): Promise<PtySpawnOutcome> => {
@@ -166,15 +170,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
       if (!ctx.result.isReattach) {
         runtime?.rememberSavedTerminalLaunchResult?.(outcome.result.id, outcome.result)
       } else {
-        const saved = savedResumeRecord(ctx.deps.store, facts.savedResumePaneKey ?? null)
-        holdTerminalResumedConversation({
-          agent: saved?.agent,
-          launchConfig: saved?.launchConfig,
-          providerSession: saved?.providerSession,
-          ptyId: outcome.result.id,
-          connectionId: args.connectionId ?? saved?.connectionId,
-          reattach: true
-        })
+        holdReattachedTerminalConversation(outcome.result.id, args.connectionId)
       }
     }
     finish(outcome)

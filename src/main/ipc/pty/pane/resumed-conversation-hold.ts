@@ -6,24 +6,19 @@ import { isChatTerminalHandoverLaunch } from '../../../../shared/ai-vault/resume
 import { sameIdTerminalResumeEnabled } from '../../../native-chat/agent-session-wire/host/structured-provider-session-ownership'
 import { terminalConversationHolds } from '../../../native-chat/conversation-adoption/structured-terminal-conversation-holds'
 
-/** Every local spawn and reattach reports here. A PTY holds its conversation only when its launch
- *  carries the hand-over's mark: the hand-over terminal itself, or a restore or reattach of it,
- *  whose saved recipe keeps the mark. Its chat then can't start a second writer while the PTY
- *  runs. Every other PTY holds nothing, as on main, whoever owns its conversation later. */
+/** Every local spawn reports here. A PTY holds its conversation only when its launch carries the
+ *  hand-over's mark: the hand-over terminal itself, or a cold restore of it, whose saved recipe
+ *  keeps the mark. Its chat then can't start a second writer while the PTY runs. Every other PTY
+ *  holds nothing, as on main, whoever owns its conversation later. */
 export function holdTerminalResumedConversation(spawned: {
   agent: unknown
   launchConfig: SleepingAgentLaunchConfig | null | undefined
   providerSession: unknown
   ptyId: string
   connectionId: string | null | undefined
-  /** The same process again (a reload or restart): it keeps a hold it had; its saved recipe can
-   *  only restore the hand-over's own. */
-  reattach?: true
 }): void {
   // A fresh process under a reused PTY id holds nothing its predecessor held.
-  if (!spawned.reattach) {
-    terminalConversationHolds.forgetPty(spawned.ptyId)
-  }
+  terminalConversationHolds.forgetPty(spawned.ptyId)
   const providerSession = normalizeAgentProviderSession(spawned.providerSession)
   if (
     !spawned.connectionId &&
@@ -33,5 +28,16 @@ export function holdTerminalResumedConversation(spawned: {
     providerSession?.id
   ) {
     terminalConversationHolds.holdPty(spawned.agent, providerSession.id, spawned.ptyId)
+  }
+}
+
+/** Every local reattach and pane adoption reports here: the same process again, after a reload or
+ *  a restart, holds what its spawn held, even once its agent quit and its saved recipe is gone. */
+export function holdReattachedTerminalConversation(
+  ptyId: string,
+  connectionId: string | null | undefined
+): void {
+  if (!connectionId) {
+    terminalConversationHolds.reholdPty(ptyId)
   }
 }

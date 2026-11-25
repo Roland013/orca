@@ -97,6 +97,9 @@ export async function assertChatConversationFreeOfTerminals(
   ) {
     return
   }
+  if (sameIdTerminalResumeEnabled(record.provider)) {
+    await terminalConversationHolds.ready()
+  }
   if (
     sameIdTerminalResumeEnabled(record.provider) &&
     terminalConversationHolds.holds(key, host.ptyConnected)
