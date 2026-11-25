@@ -94,6 +94,8 @@ async function idleClaudeChat(): Promise<QueuedMessageTestRig> {
 }
 
 const IN_TERMINAL = { ok: false, reason: 'openInTerminal' }
+// The chat's agent is stopped, so the refusal says Orca can't vouch for who owns the conversation.
+const REFUSED = 'agent_session_ownership_unknown'
 const owner = (chat: QueuedMessageTestRig) => chat.store.getRecord(SESSION)?.lease.ownerProcess
 
 it('never lets a chat and a terminal, or two terminals, write one Claude conversation', async () => {
@@ -124,7 +126,7 @@ it('never lets a chat and a terminal, or two terminals, write one Claude convers
   // A same-id resume sent to a terminal, or from Session History, stays refused as before.
   await expect(
     assertLegacyAiVaultResumeCommandAllowed(`claude --resume ${THREAD}`, async () => {})
-  ).rejects.toThrow()
+  ).rejects.toThrow(REFUSED)
   expect(() =>
     assertLegacyAiVaultResumeAllowed({
       agent: 'claude',
@@ -133,7 +135,7 @@ it('never lets a chat and a terminal, or two terminals, write one Claude convers
       codexHome: null,
       executionHostId: 'local'
     })
-  ).toThrow()
+  ).toThrow(REFUSED)
   // The agent quits but its shell stays: the PTY still runs, so the hold stays.
   runtime.rows = [leftoverRow]
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
