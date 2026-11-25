@@ -52,6 +52,7 @@ export type PtySpawnCommitState = {
     | 'worktreeId'
     | 'tabId'
     | 'launchAgent'
+    | 'launchConfig'
     | 'resumeProviderSession'
     | 'onResumeOutcome'
     | 'telemetry'

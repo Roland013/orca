@@ -13,8 +13,8 @@ import { eventually } from '../host/testing/structured-agent-session-queued-mess
 import { assertChatConversationFreeOfTerminals } from '../../../runtime/agent-session/lifecycle/structured-agent-cli-writers'
 import { holdTerminalResumedConversation } from '../../../ipc/pty/pane/resumed-conversation-hold'
 import { terminalConversationHolds } from '../../conversation-adoption/structured-terminal-conversation-holds'
-import { terminalConversationKey } from '../../conversation-adoption/structured-conversation-key'
 import { setStructuredAgentSessionHost } from '../host/structured-agent-session-registry'
+import { buildAiVaultHandoverStartup } from '../../../../shared/ai-vault/resume/ai-vault-resume-startup'
 import {
   assertLegacyAiVaultResumeAllowed,
   assertLegacyAiVaultResumeCommandAllowed
@@ -22,8 +22,8 @@ import {
 
 // "Continue in terminal" hands a Claude chat's own conversation to a terminal. Never two writers
 // on it: not the chat and the terminal, not two terminals. Nothing here rests on hooks naming a
-// process, which Windows hooks never do. Only hand-over terminals hold: a Claude terminal of a
-// conversation no chat owns keeps main's behavior.
+// process, which Windows hooks never do. Only hand-over terminals hold: any other Claude terminal
+// keeps main's behavior, even once a chat owns its conversation.
 let rig: QueuedMessageTestRig | null = null
 afterEach(async () => {
   setStructuredAgentSessionHost(null)
@@ -100,33 +100,41 @@ const IN_TERMINAL = { ok: false, reason: 'openInTerminal' }
 const REFUSED = 'agent_session_ownership_unknown'
 const owner = (chat: QueuedMessageTestRig) => chat.store.getRecord(SESSION)?.lease.ownerProcess
 
-/** A Claude PTY spawn as both spawn paths report it. */
-function spawned(ptyId: string, conversationId: string): void {
+/** The hand-over terminal's launch recipe, as the hand-over builds it; a restore reuses its saved copy. */
+const handoverLaunch = buildAiVaultHandoverStartup({
+  session: { agent: 'claude', sessionId: THREAD, cwd: null, codexHome: null },
+  host: { platform: process.platform, codexHome: null, liveShell: undefined },
+  settings: null
+})?.launchConfig
+
+/** A Claude PTY as both spawn paths report it: a fresh spawn's launch, or a reattach's saved recipe. */
+function spawned(
+  ptyId: string,
+  conversationId: string | undefined,
+  launch: { handover: boolean; reattach?: true }
+): void {
   runtime.ptys.set(ptyId, true)
   holdTerminalResumedConversation({
     agent: 'claude',
-    providerSession: { key: 'session_id', id: conversationId },
+    launchConfig: launch.handover ? handoverLaunch : { agentArgs: '', agentEnv: {} },
+    providerSession: conversationId ? { key: 'session_id', id: conversationId } : undefined,
     ptyId,
-    connectionId: null
+    connectionId: null,
+    ...(launch.reattach ? { reattach: true as const } : {})
   })
 }
 
-/** A conversation no chat owns: a terminal resumed it from Session History. */
-const TERMINAL_ONLY = '2f4b8e1a-7c3d-4e5f-9a6b-0c1d2e3f4a5b'
-
 it('never lets two writers on one Claude conversation, and holds only hand-over terminals', async () => {
   rig = await idleClaudeChat()
-  setStructuredAgentSessionHost(null)
-  // App start: two Claude terminals are restored before the chat host is up. One is a hand-over
-  // terminal of the chat's conversation; the other resumed a conversation no chat owns.
-  spawned('pty-restored', THREAD)
-  spawned('pty-other', TERMINAL_ONLY)
   setStructuredAgentSessionHost(rig.host)
-  // The restored hand-over terminal holds the chat. The other holds nothing, as on main.
+  // App start. A hand-over terminal of the chat's conversation is restored. Another terminal of
+  // that same conversation reattaches unmarked: the chat adopted its conversation after it spawned.
+  spawned('pty-restored', THREAD, { handover: true })
+  spawned('pty-adopted', THREAD, { handover: false, reattach: true })
+  // The restored hand-over terminal holds the chat.
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
-  const otherKey = terminalConversationKey('claude', TERMINAL_ONLY)
-  expect(terminalConversationHolds.holds(otherKey, (ptyId) => runtime.ptys.get(ptyId))).toBe(false)
-  runtime.ptys.set('pty-restored', false)
+  // A fresh shell reuses its PTY id: that process holds nothing. The unmarked terminal never did.
+  spawned('pty-restored', undefined, { handover: false })
   const first = await rig.host.handOverToTerminal(SESSION)
   if (!first.ok) {
     throw new Error(`the idle chat was refused: ${first.reason}`)
@@ -135,9 +143,12 @@ it('never lets two writers on one Claude conversation, and holds only hand-over 
   // Before the terminal's PTY spawns, the hand-over holds the conversation.
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
   // The PTY spawns resuming it and its agent reports the Windows way. The PTY alone holds now.
-  spawned('pty-1', THREAD)
+  spawned('pty-1', THREAD, { handover: true })
   terminalConversationHolds.releaseHandover(first.handoverId)
   runtime.rows = [windowsRow]
+  expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
+  // A reload reattaches it with no saved recipe: the same process keeps its hold.
+  spawned('pty-1', undefined, { handover: false, reattach: true })
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
   // A send from another client starts no agent for the chat.
   await rig.send('from the phone').result

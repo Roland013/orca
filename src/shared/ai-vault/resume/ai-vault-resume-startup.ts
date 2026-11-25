@@ -33,6 +33,7 @@ import { CLI_CONVERSATION_ADOPTING_AGENTS } from '../../agent-session/view/struc
 import type { GlobalSettings } from '../../settings/global-settings-types'
 import { managedDataAccountResumeEnv } from '../../agent-launch/environment/managed-data-account-resume'
 import { buildAntigravityReferenceStartup } from './ai-vault-antigravity-reference-startup'
+import { CHAT_TERMINAL_HANDOVER_ENV } from './chat-terminal-handover-marker'
 
 export type AiVaultResumeCommandSession = Pick<
   AiVaultSession,
@@ -252,7 +253,13 @@ function buildAiVaultChatTakeoverStartup(
       undefined,
       resolveStartupShell(platform, liveShell)
     ),
-    agentEnv: resolveTuiAgentLaunchEnv(session.agent, settings, platform),
+    // The hand-over's mark rides in the launch env, which the pane's saved recipe keeps for restores.
+    agentEnv: fork
+      ? resolveTuiAgentLaunchEnv(session.agent, settings, platform)
+      : {
+          ...resolveTuiAgentLaunchEnv(session.agent, settings, platform),
+          [CHAT_TERMINAL_HANDOVER_ENV]: '1'
+        },
     resumeInLaunchCwd: true,
     fork
   })

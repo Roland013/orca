@@ -1,74 +1,37 @@
-import { normalizeAgentProviderSession } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import {
-  listStructuredProviderSessionOwnership,
-  sameIdTerminalResumeEnabled
-} from '../../../native-chat/agent-session-wire/host/structured-provider-session-ownership'
-import {
-  getStructuredAgentSessionHost,
-  onStructuredAgentSessionHostChanged
-} from '../../../native-chat/agent-session-wire/host/structured-agent-session-registry'
-import {
-  keysMayMatch,
-  terminalConversationKey
-} from '../../../native-chat/conversation-adoption/structured-conversation-key'
+  normalizeAgentProviderSession,
+  type SleepingAgentLaunchConfig
+} from '../../../../shared/agent-session/lifecycle/agent-session-resume'
+import { isChatTerminalHandoverLaunch } from '../../../../shared/ai-vault/resume/chat-terminal-handover-marker'
+import { sameIdTerminalResumeEnabled } from '../../../native-chat/agent-session-wire/host/structured-provider-session-ownership'
 import { terminalConversationHolds } from '../../../native-chat/conversation-adoption/structured-terminal-conversation-holds'
 
-type ResumedPty = { agent: string; conversationId: string; ptyId: string }
-
-/** PTYs that spawned before the chat host came up (a restore at app start); judged as it does,
- *  before any chat can start. */
-const undecided = new Map<string, ResumedPty>()
-
-/** Every local spawn and reattach reports here. A PTY holds its conversation only when it resumes a
- *  chat's head conversation: a hand-over terminal, or the restore of one. Its chat then can't start
- *  a second writer while the PTY runs. Every other PTY, any other agent's and a Claude terminal of
- *  a terminal-only conversation alike, holds nothing, as on main. */
+/** Every local spawn and reattach reports here. A PTY holds its conversation only when its launch
+ *  carries the hand-over's mark: the hand-over terminal itself, or a restore or reattach of it,
+ *  whose saved recipe keeps the mark. Its chat then can't start a second writer while the PTY
+ *  runs. Every other PTY holds nothing, as on main, whoever owns its conversation later. */
 export function holdTerminalResumedConversation(spawned: {
   agent: unknown
+  launchConfig: SleepingAgentLaunchConfig | null | undefined
   providerSession: unknown
   ptyId: string
   connectionId: string | null | undefined
-  /** The same process again (a reload or restart); it keeps what it held. */
+  /** The same process again (a reload or restart): it keeps a hold it had; its saved recipe can
+   *  only restore the hand-over's own. */
   reattach?: true
 }): void {
   // A fresh process under a reused PTY id holds nothing its predecessor held.
   if (!spawned.reattach) {
     terminalConversationHolds.forgetPty(spawned.ptyId)
-    undecided.delete(spawned.ptyId)
   }
   const providerSession = normalizeAgentProviderSession(spawned.providerSession)
   if (
-    spawned.connectionId ||
-    typeof spawned.agent !== 'string' ||
-    !sameIdTerminalResumeEnabled(spawned.agent) ||
-    !providerSession?.id
+    !spawned.connectionId &&
+    typeof spawned.agent === 'string' &&
+    sameIdTerminalResumeEnabled(spawned.agent) &&
+    isChatTerminalHandoverLaunch(spawned.launchConfig) &&
+    providerSession?.id
   ) {
-    return
-  }
-  const resumed = { agent: spawned.agent, conversationId: providerSession.id, ptyId: spawned.ptyId }
-  if (!holdIfChatHead(resumed)) {
-    undecided.set(resumed.ptyId, resumed)
+    terminalConversationHolds.holdPty(spawned.agent, providerSession.id, spawned.ptyId)
   }
 }
-
-/** False while no chat host can say whose conversation it is. */
-function holdIfChatHead(resumed: ResumedPty): boolean {
-  const host = getStructuredAgentSessionHost()
-  if (!host) {
-    return false
-  }
-  const key = terminalConversationKey(resumed.agent, resumed.conversationId)
-  const heads = listStructuredProviderSessionOwnership(host.deps.store.listConversations())
-  if (heads.some((holding) => holding.role === 'head' && keysMayMatch(holding.key, key))) {
-    terminalConversationHolds.holdPty(resumed.agent, resumed.conversationId, resumed.ptyId)
-  }
-  return true
-}
-
-onStructuredAgentSessionHostChanged(() => {
-  for (const [ptyId, resumed] of undecided) {
-    if (holdIfChatHead(resumed)) {
-      undecided.delete(ptyId)
-    }
-  }
-})

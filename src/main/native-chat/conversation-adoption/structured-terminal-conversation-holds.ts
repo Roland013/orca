@@ -16,8 +16,9 @@ type Hold =
 
 /** Which chat conversations a terminal may be writing, from facts Orca owns on every platform,
  *  hooks on or off: a hand-over until its terminal's PTY spawns, then each PTY Orca spawned or
- *  reattached to resume a chat's head conversation, for as long as that PTY runs. Every process the terminal
- *  starts lives in its PTY, so a PTY that no longer runs writes nothing. Hook rows play no part. */
+ *  reattached as the hand-over's terminal (its launch carries the mark), while that PTY runs.
+ *  Every process the terminal starts lives in its PTY, so a PTY that no longer runs writes
+ *  nothing. Hook rows play no part. */
 class TerminalConversationHolds {
   private readonly entries = new Map<string, Hold>()
   private nextId = 0

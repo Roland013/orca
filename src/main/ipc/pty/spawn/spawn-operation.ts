@@ -169,6 +169,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
         const saved = savedResumeRecord(ctx.deps.store, facts.savedResumePaneKey ?? null)
         holdTerminalResumedConversation({
           agent: saved?.agent,
+          launchConfig: saved?.launchConfig,
           providerSession: saved?.providerSession,
           ptyId: outcome.result.id,
           connectionId: args.connectionId ?? saved?.connectionId,

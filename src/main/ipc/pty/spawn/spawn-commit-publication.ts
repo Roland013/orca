@@ -118,6 +118,7 @@ export function publishCommittedPtySpawn(input: PtySpawnCommitInput): PtySpawnOu
   if (!result.isReattach) {
     holdTerminalResumedConversation({
       agent: args.launchAgent,
+      launchConfig: args.launchConfig,
       providerSession: input.resumeArgvDropped ? undefined : args.resumeProviderSession,
       ptyId: result.id,
       connectionId: args.connectionId
