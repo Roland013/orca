@@ -104,7 +104,7 @@ export async function prepareAiVaultSessionResume(
         ? tryEnsureStructuredAgentSessionHostForResume(options.ensureStructuredSessionOwnership)
         : options.ensureStructuredSessionOwnership())
     }
-    assertLegacyAiVaultResumeAllowed(args)
+    await assertLegacyAiVaultResumeAllowed(args)
   }
   return (
     (await copyStructuredChatConversation(args)) ??

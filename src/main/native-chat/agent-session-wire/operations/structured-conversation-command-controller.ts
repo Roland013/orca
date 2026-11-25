@@ -31,13 +31,12 @@ export class StructuredConversationCommandController {
 
   /** Stop an idle chat's agent with proof it exited, for a terminal to resume its conversation;
    *  refused, like a second command, while /clear runs. */
-  handOverToTerminal = (sessionId: string, holdFence: () => () => void) =>
+  handOverToTerminal = (sessionId: string) =>
     this.pending.has(sessionId)
-      ? Promise.resolve({ ok: false as const, reason: 'busy' as const })
+      ? Promise.resolve({ ok: false as const, reason: 'clearInFlight' as const })
       : handOverStructuredChatToTerminal(
           { ...this.context(), releaseIdle: (id) => this.host.releaseIdleSession(id, true) },
-          sessionId,
-          holdFence
+          sessionId
         )
 
   run = (caller: StructuredAgentSessionCaller, params: ConversationCommandParams) => {

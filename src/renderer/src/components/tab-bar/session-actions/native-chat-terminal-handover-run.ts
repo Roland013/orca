@@ -1,5 +1,7 @@
 import { toast } from 'sonner'
 import { useAppStore } from '@/store/index'
+import type { AppState } from '@/store/types'
+import type { TerminalPaneLayoutNode } from '../../../../../shared/workspace-layout/terminal-tab-types'
 import { translate } from '@/i18n/i18n'
 import { AiVaultChatForkSourceSchema } from '../../../../../shared/ai-vault/contracts/ai-vault-chat-fork-contract'
 import type { AiVaultAgent } from '../../../../../shared/ai-vault/contracts/ai-vault-types'
@@ -82,6 +84,7 @@ export async function runNativeChatTerminalHandover(args: {
       release()
       return 'handled'
     }
+    releaseIfEndedUnreported(subject.workspaceId, terminalTabId, result.source.sessionId, release)
     // Direct close: the pin prompt belongs to the close commands, and the conversation moved on.
     useAppStore.getState().closeUnifiedTab(chatTab.id)
     return 'handled'
@@ -91,16 +94,56 @@ export async function runNativeChatTerminalHandover(args: {
   }
 }
 
+/** The pane a new tab launched in; a split keeps it on the `first` side. */
+export function launchedLeafId(
+  node: TerminalPaneLayoutNode | null | undefined
+): string | undefined {
+  return !node ? undefined : node.type === 'leaf' ? node.leafId : launchedLeafId(node.first)
+}
+
+/** Until the terminal's agent reports the conversation, the host holds it. A terminal closed or
+ *  ended before that report would otherwise hold it until the fence lapses. */
+function releaseIfEndedUnreported(
+  worktreeId: string,
+  tabId: string,
+  conversationId: string,
+  release: () => void
+): void {
+  let spawned = false
+  const settled = (state: AppState): boolean => {
+    const tab = state.tabsByWorktree[worktreeId]?.find((item) => item.id === tabId)
+    spawned ||= Boolean(tab?.ptyId)
+    const leafId = launchedLeafId(state.terminalLayoutsByTabId[tabId]?.root)
+    const reported = leafId
+      ? state.agentStatusByPaneKey.get(`${tabId}:${leafId}`)?.providerSession?.id === conversationId
+      : false
+    if (!reported && (!tab || (spawned && !tab.ptyId))) {
+      release()
+      return true
+    }
+    return reported
+  }
+  if (settled(useAppStore.getState())) {
+    return
+  }
+  const stop = useAppStore.subscribe((state) => {
+    if (settled(state)) {
+      stop()
+    }
+  })
+}
+
 function handoverRefusalMessage(
   reason: AiVaultChatTerminalHandoverRefusal,
   agent: AiVaultAgent
 ): string {
+  const options = { agent: agentLabel(agent) }
   switch (reason) {
     case 'turnActive':
       return translate(
         'auto.components.tab.bar.nativeChatTerminalHandover.turnActive',
         '{{agent}} is still working. Continue in terminal when this turn ends.',
-        { agent: agentLabel(agent) }
+        options
       )
     case 'promptPending':
       return translate(
@@ -117,15 +160,42 @@ function handoverRefusalMessage(
         'auto.components.tab.bar.nativeChatTerminalHandover.messagesUnsettled',
         'Wait for queued or unsent messages to be delivered first.'
       )
+    case 'rewindUnconfirmed':
+      return translate(
+        'auto.components.tab.bar.nativeChatTerminalHandover.rewindUnconfirmed',
+        'Send a message after rewinding this chat, then continue in terminal.'
+      )
+    case 'handoffInFlight':
+      return translate(
+        'auto.components.tab.bar.nativeChatTerminalHandover.handoffInFlight',
+        'This chat is being handed off. Continue in terminal when that finishes.'
+      )
+    case 'clearInFlight':
+      return translate(
+        'auto.components.tab.bar.nativeChatTerminalHandover.clearInFlight',
+        'Wait for /clear to finish, then continue in terminal.'
+      )
+    case 'agentStarting':
+      return translate(
+        'auto.components.tab.bar.nativeChatTerminalHandover.agentStarting',
+        '{{agent}} is still starting. Continue in terminal once it is ready.',
+        options
+      )
+    case 'agentBusy':
+      return translate(
+        'auto.components.tab.bar.nativeChatTerminalHandover.agentBusy',
+        '{{agent}} reported unfinished work. Continue in terminal when it is idle.',
+        options
+      )
+    case 'openInTerminal':
+      return translate(
+        'auto.components.tab.bar.nativeChatTerminalHandover.openInTerminal',
+        'This conversation is already open in a terminal. Close that terminal first.'
+      )
     case 'stopUnproven':
       return translate(
         'auto.components.tab.bar.nativeChatTerminalHandover.stopUnproven',
-        "Orca couldn't confirm the chat's agent stopped. Try again."
-      )
-    case 'busy':
-      return translate(
-        'auto.components.tab.bar.nativeChatTerminalHandover.busy',
-        'This chat is busy. Continue in terminal when it is idle.'
+        "Orca couldn't confirm the chat's agent stopped. Send a message in the chat, then continue in terminal once it is idle."
       )
   }
 }

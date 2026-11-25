@@ -167,7 +167,7 @@ export const AI_VAULT_METHODS = [
         await (args.codexHome === null && !args.fork
           ? tryEnsureStructuredAgentSessionHostForResume(ensureHost)
           : ensureHost())
-        assertLegacyAiVaultResumeAllowed(args)
+        await assertLegacyAiVaultResumeAllowed(args)
       }
       return (
         (await copyStructuredChatConversation(args)) ?? runtime.prepareAiVaultSessionResume(args)

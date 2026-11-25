@@ -3,37 +3,41 @@ import type { StructuredAgentId } from '../../../shared/agent-session/lifecycle/
 import { keysMayMatch, type ConversationKey } from './structured-conversation-key'
 
 /** Long enough for a shell and the agent to start and report on a slow machine. */
-export const TERMINAL_HANDOVER_FENCE_MS = 120_000
+const TERMINAL_HANDOVER_FENCE_MS = 120_000
+
+/** `handover`: a chat gave its conversation to a terminal. `resume`: a same-id terminal resume
+ *  was admitted; a later check of that same resume must not be refused by its own fence. */
+type FenceKind = 'handover' | 'resume'
 
 type HandoverFence = {
   agent: StructuredAgentId
   key: ConversationKey
+  kind: FenceKind
   since: number
   until: number
 }
 
 type TerminalStatusRow = Parameters<typeof namesCliConversation>[0] & {
   structuredHost?: unknown
+  providerSessionOnly?: boolean
   receivedAt: number
 }
 
-/** A terminal given a chat's conversation writes it before its hooks report it, so the writer
- *  check can't see it yet: until a row it sent names the conversation, the chat must not start. */
-export class StructuredTerminalHandoverFences {
+/** A terminal given a chat's conversation writes it before Orca sees it there, so the writer
+ *  checks can't find it yet: until a row it sent names the conversation, nothing else may write. */
+class StructuredTerminalHandoverFences {
   private readonly fences = new Map<string, HandoverFence>()
   private nextId = 0
 
-  constructor(private readonly now: () => number = Date.now) {}
-
-  hold(agent: StructuredAgentId, key: ConversationKey): string {
+  hold(agent: StructuredAgentId, key: ConversationKey, kind: FenceKind): string {
     const id = `terminal-handover-${++this.nextId}`
-    const since = this.now()
+    const since = Date.now()
     for (const [held, fence] of this.fences) {
       if (since >= fence.until) {
         this.fences.delete(held)
       }
     }
-    this.fences.set(id, { agent, key, since, until: since + TERMINAL_HANDOVER_FENCE_MS })
+    this.fences.set(id, { agent, key, kind, since, until: since + TERMINAL_HANDOVER_FENCE_MS })
     return id
   }
 
@@ -41,10 +45,10 @@ export class StructuredTerminalHandoverFences {
     this.fences.delete(id)
   }
 
-  /** Whether a chat start on `key` must wait. A row received since the fence hands the guard to
-   *  the writer check, which reads that row's process; an older row proves nothing. */
-  holds(key: ConversationKey, rows: () => readonly TerminalStatusRow[]): boolean {
-    const now = this.now()
+  /** Whether `key` is held. The agent's own report since the fence hands the guard to the
+   *  writer check; an older row proves nothing, and a spawn's resume row only names the pane. */
+  holds(key: ConversationKey, rows: () => readonly TerminalStatusRow[], kinds: FenceKind[]) {
+    const now = Date.now()
     const listed = this.fences.size > 0 ? rows() : []
     let held = false
     for (const [id, fence] of this.fences) {
@@ -53,13 +57,14 @@ export class StructuredTerminalHandoverFences {
         listed.some(
           (row) =>
             !row.structuredHost &&
+            row.providerSessionOnly !== true &&
             row.receivedAt >= fence.since &&
             fence.key.id !== null &&
             namesCliConversation(row, fence.agent, fence.key.id)
         )
       ) {
         this.fences.delete(id)
-      } else if (keysMayMatch(fence.key, key)) {
+      } else if (kinds.includes(fence.kind) && keysMayMatch(fence.key, key)) {
         held = true
       }
     }

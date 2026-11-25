@@ -33,13 +33,20 @@ export type AiVaultPrepareSessionResumeRequest =
   | AiVaultPrepareSessionResumeArgs
   | AiVaultPrepareChatForkArgs
 
-/** Why a chat stays a chat; the work reasons match what blocks /clear. */
+/** Why a chat stays a chat: the six reasons that block /clear, a /clear or start still running,
+ *  an agent that reports open work, a terminal that already writes the conversation, or an exit
+ *  Orca can't prove. */
 export type AiVaultChatTerminalHandoverRefusal =
   | 'turnActive'
   | 'promptPending'
   | 'backgroundTasksRunning'
   | 'messagesUnsettled'
-  | 'busy'
+  | 'rewindUnconfirmed'
+  | 'handoffInFlight'
+  | 'clearInFlight'
+  | 'agentStarting'
+  | 'agentBusy'
+  | 'openInTerminal'
   | 'stopUnproven'
 
 /** `ready`: the chat's agent exited and the host holds its start until the terminal reports.

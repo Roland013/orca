@@ -4,13 +4,13 @@ import {
 } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host/execution-host'
 import type { StructuredAgentId } from '../../../../shared/agent-session/lifecycle/provider-handles/agent-session-provider-handle'
-import { assertCliConversationWritersExited } from '../../agent-session/lifecycle/structured-agent-cli-writers'
+import {
+  assertChatConversationFreeOfTerminals,
+  assertCliConversationWritersExited,
+  type ChatConversationWriterHost
+} from '../../agent-session/lifecycle/structured-agent-cli-writers'
 import type { EnrichedAgentHookEventPayload } from '../../../agent-hooks/server/server-types'
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
-import { CLI_CONVERSATION_ADOPTING_AGENTS } from '../../../../shared/agent-session/view/structured-agent-cli-conversation-adoption'
-import { recordConversationKey } from '../../../native-chat/conversation-adoption/structured-conversation-key'
-import { terminalHandoverFences } from '../../../native-chat/conversation-adoption/structured-terminal-handover-fence'
-import { agentSessionRefusalError } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
 import type { StructuredAgentCliSourceRoute } from '../../../native-chat/conversation-adoption/structured-agent-cli-source'
 import { OrcaRuntimeWithGetWorktreePs } from '../../workspaces/process-listing/workspace-process-listing'
 
@@ -78,22 +78,12 @@ export abstract class OrcaRuntimeWithStructuredSessionCliWriterHost extends Orca
     }
   }
 
-  protected async assertStructuredChatAcquireAdmissible(record: AgentSessionRecord): Promise<void> {
-    const head = record.providerHandleChain.at(-1)
-    const key = head ? recordConversationKey(record, head) : null
-    if (
-      key?.id &&
-      Object.values(CLI_CONVERSATION_ADOPTING_AGENTS).some((agents: readonly string[]) =>
-        agents.includes(record.provider)
-      )
-    ) {
-      if (terminalHandoverFences.holds(key, () => this.getAgentProviderSessionRows())) {
-        throw agentSessionRefusalError('agent_session_conflict', {
-          reason: 'conversationHeldElsewhere'
-        })
-      }
-      await this.assertStructuredAdoptionTerminalWritersExited(record.provider, key.id)
-    }
+  /** A chat start or a same-id terminal resume of the chat's conversation; see the guard. */
+  protected assertStructuredChatAcquireAdmissible(
+    record: AgentSessionRecord,
+    admitting?: 'resume'
+  ): Promise<void> {
+    return assertChatConversationFreeOfTerminals(this.chatConversationWriters(), record, admitting)
   }
 
   async assertStructuredAdoptionTerminalWritersExited(
@@ -102,18 +92,23 @@ export abstract class OrcaRuntimeWithStructuredSessionCliWriterHost extends Orca
     closingPaneKeys?: readonly string[]
   ): Promise<void> {
     await assertCliConversationWritersExited(
-      {
-        rows: () => this.getAgentProviderSessionRows(),
-        observation: (row) => this.readHookCliWriterObservationFn?.(row) ?? null,
-        ptyResolver: () => {
-          // One identity read for every key, rather than a scan of all terminals per key.
-          const context = this.createTerminalIdentityReadContext()
-          return (paneKey) => this.getPtyRecordForPaneKey(paneKey, context)?.ptyId ?? null
-        }
-      },
+      this.chatConversationWriters(),
       agent,
       providerSessionId,
       closingPaneKeys
     )
+  }
+
+  private chatConversationWriters(): ChatConversationWriterHost {
+    return {
+      rows: () => this.getAgentProviderSessionRows(),
+      observation: (row) => this.readHookCliWriterObservationFn?.(row) ?? null,
+      ptyResolver: () => {
+        // One identity read for every key, rather than a scan of all terminals per key.
+        const context = this.createTerminalIdentityReadContext()
+        return (paneKey) => this.getPtyRecordForPaneKey(paneKey, context)?.ptyId ?? null
+      },
+      paneRunning: (paneKey) => this.getPtyRecordForPaneKey(paneKey)?.connected === true
+    }
   }
 }

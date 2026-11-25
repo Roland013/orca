@@ -1,11 +1,16 @@
 import type { AiVaultChatTerminalHandoverRefusal } from '../../../../shared/ai-vault/resume/ai-vault-resume-preparation'
+import { isAgentSessionRefusalError } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
+import { agentSessionLeaseNeverAcquired } from '../../../../shared/agent-session/lifecycle/leases/agent-session-lease-adjudication'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import {
   listStructuredProviderSessionOwnership,
+  sameIdTerminalResumeEnabled,
   terminalResumeBlocked
 } from '../host/structured-provider-session-ownership'
 import { readHostStructuredAgentSessionWork } from '../observations/structured-agent-session-read-work'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
+import { recordConversationKey } from '../../conversation-adoption/structured-conversation-key'
+import { terminalHandoverFences } from '../../conversation-adoption/structured-terminal-handover-fence'
 
 type TerminalHandoverHost = Pick<
   StructuredAgentSessionMutationContext,
@@ -15,39 +20,48 @@ type TerminalHandoverHost = Pick<
   releaseIdle: (sessionId: string) => Promise<void>
 }
 
-export type StructuredTerminalHandover =
-  | { ok: true }
-  | { ok: false; reason: AiVaultChatTerminalHandoverRefusal }
+type Refused = { ok: false; reason: AiVaultChatTerminalHandoverRefusal }
 
-const WORK_REASONS: ReadonlySet<string> = new Set<AiVaultChatTerminalHandoverRefusal>([
+/** `handoverId` names the fence that keeps every other writer off until the terminal reports. */
+export type StructuredTerminalHandover = { ok: true; handoverId: string } | Refused
+
+const COMMAND_REASONS: ReadonlySet<string> = new Set<AiVaultChatTerminalHandoverRefusal>([
   'turnActive',
   'promptPending',
   'backgroundTasksRunning',
-  'messagesUnsettled'
+  'messagesUnsettled',
+  'rewindUnconfirmed',
+  'handoffInFlight'
 ])
 
 /** Stop an idle chat's agent with proof it exited, so a terminal can resume its conversation.
- *  `holdFence` runs on the chat's lane before the stop, so no start slips in after it; every
- *  refusal releases it. Busy chats are refused untouched, by the same check as /clear. */
+ *  Refused untouched while the chat works (the /clear check) or a terminal already holds the
+ *  conversation (the chat-start check). The fence is held on the chat's lane before the stop, so
+ *  no start or second hand-over slips in after it; every refusal releases it. */
 export async function handOverStructuredChatToTerminal(
   host: TerminalHandoverHost,
-  sessionId: string,
-  holdFence: () => () => void
+  sessionId: string
 ): Promise<StructuredTerminalHandover> {
   await host.conversation(sessionId)
   const admitted = await host.serialize(
     sessionId,
-    async (): Promise<
-      { ok: false; reason: AiVaultChatTerminalHandoverRefusal } | { ok: true; release: () => void }
-    > => {
-      const reason = await workBlocksHandover(host, sessionId)
-      return reason ? { ok: false, reason } : { ok: true, release: holdFence() }
+    async (): Promise<StructuredTerminalHandover> => {
+      const reason =
+        (await workBlocksHandover(host, sessionId)) ??
+        (await terminalHoldsConversation(host, sessionId))
+      const record = host.deps.store.requireWritableRecord(sessionId)
+      const head = record.providerHandleChain.at(-1)
+      const key = head ? recordConversationKey(record, head) : null
+      if (reason || !key?.id) {
+        return { ok: false, reason: reason ?? 'stopUnproven' }
+      }
+      return { ok: true, handoverId: terminalHandoverFences.hold(record.provider, key, 'handover') }
     }
   )
   if (!admitted.ok) {
     return admitted
   }
-  const { release } = admitted
+  const release = () => terminalHandoverFences.release(admitted.handoverId)
   try {
     // The idle sweep's own stop: it rechecks owed work and asks the provider before stopping.
     await host.releaseIdle(sessionId)
@@ -56,7 +70,7 @@ export async function handOverStructuredChatToTerminal(
       release()
       return { ok: false, reason }
     }
-    return { ok: true }
+    return admitted
   } catch (error) {
     release()
     throw error
@@ -69,8 +83,11 @@ async function workBlocksHandover(
 ): Promise<AiVaultChatTerminalHandoverRefusal | null> {
   const session = host.sessions.get(sessionId)
   const record = host.deps.store.requireWritableRecord(sessionId)
-  if (!session || session.child?.phase === 'starting') {
-    return 'busy'
+  if (!session) {
+    return 'agentBusy'
+  }
+  if (session.child?.phase === 'starting') {
+    return 'agentStarting'
   }
   const blocked = await conversationCommandBlocked(
     {
@@ -93,26 +110,49 @@ async function workBlocksHandover(
     return null
   }
   const reason = blocked.code === 'agent_session_operation_invalid' ? blocked.details?.reason : null
-  return isWorkReason(reason) ? reason : 'busy'
+  return isCommandReason(reason) ? reason : 'agentBusy'
 }
 
-function isWorkReason(
+function isCommandReason(
   reason: string | null | undefined
 ): reason is AiVaultChatTerminalHandoverRefusal {
-  return reason != null && WORK_REASONS.has(reason)
+  return reason != null && COMMAND_REASONS.has(reason)
 }
 
-/** The terminal is admitted by the same rule as any same-id resume: the head's owner exited. */
+/** The check a chat start makes: a fence, an open resumed terminal or a live terminal writer. */
+async function terminalHoldsConversation(
+  host: TerminalHandoverHost,
+  sessionId: string
+): Promise<AiVaultChatTerminalHandoverRefusal | null> {
+  try {
+    await host.deps.assertNoTerminalWriter?.(host.deps.store.requireWritableRecord(sessionId))
+    return null
+  } catch (error) {
+    if (isAgentSessionRefusalError(error) && error.refusal.code === 'agent_session_conflict') {
+      return 'openInTerminal'
+    }
+    throw error
+  }
+}
+
+/** The terminal is admitted by the same rule as any same-id resume: the head's owner exited. A
+ *  chat whose agent never started has no owner to prove gone. */
 function stopUnproven(
   host: TerminalHandoverHost,
   sessionId: string
 ): AiVaultChatTerminalHandoverRefusal | null {
   if (host.sessions.get(sessionId)?.child) {
-    return 'busy'
+    return 'agentBusy'
   }
+  const record = host.deps.store.getRecord(sessionId)
   const view = host.deps.store.getConversation(sessionId)
   const head = view
     ? listStructuredProviderSessionOwnership([view]).find((link) => link.role === 'head')
     : undefined
-  return !head || terminalResumeBlocked(head) ? 'stopUnproven' : null
+  if (!record || !head) {
+    return 'stopUnproven'
+  }
+  const neverStarted =
+    sameIdTerminalResumeEnabled(head.provider) && agentSessionLeaseNeverAcquired(record.lease)
+  return terminalResumeBlocked(head) && !neverStarted ? 'stopUnproven' : null
 }

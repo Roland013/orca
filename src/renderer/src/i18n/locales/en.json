@@ -5720,8 +5720,13 @@
             "promptPending": "Answer the pending question or approval first.",
             "backgroundTasksRunning": "Wait for background tasks to finish, or stop them, first.",
             "messagesUnsettled": "Wait for queued or unsent messages to be delivered first.",
-            "stopUnproven": "Orca couldn't confirm the chat's agent stopped. Try again.",
-            "busy": "This chat is busy. Continue in terminal when it is idle."
+            "rewindUnconfirmed": "Send a message after rewinding this chat, then continue in terminal.",
+            "handoffInFlight": "This chat is being handed off. Continue in terminal when that finishes.",
+            "clearInFlight": "Wait for /clear to finish, then continue in terminal.",
+            "agentStarting": "{{agent}} is still starting. Continue in terminal once it is ready.",
+            "agentBusy": "{{agent}} reported unfinished work. Continue in terminal when it is idle.",
+            "openInTerminal": "This conversation is already open in a terminal. Close that terminal first.",
+            "stopUnproven": "Orca couldn't confirm the chat's agent stopped. Send a message in the chat, then continue in terminal once it is idle."
           }
         }
       },

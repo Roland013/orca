@@ -297,7 +297,7 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends RuntimeChatWorkerEven
         conversationNaming: nameChat,
         onSessionTabHidden: (sessionId) => this.onStructuredSessionTabHidden(sessionId),
         queuedAgentMessageOwed: (sessionId, from) => this.structuredChatMailOwed(sessionId, from),
-        assertNoTerminalWriter: (record) => this.assertStructuredChatAcquireAdmissible(record),
+        assertNoTerminalWriter: (...args) => this.assertStructuredChatAcquireAdmissible(...args),
         attentionDelivery: createStructuredAttentionMobileDelivery({
           readNotificationSettings: () => this.requireStore().getSettings().notifications,
           readWorkspaceLabels: (scope) =>

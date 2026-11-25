@@ -1,6 +1,12 @@
 import type { AgentStatusIpcPayload } from '../../../../shared/agent-status/contracts/agent-status-ipc-payload'
 import type { StructuredAgentId } from '../../../../shared/agent-session/lifecycle/provider-handles/agent-session-provider-handle'
-import { namesCliConversation } from '../../../../shared/agent-session/view/structured-agent-cli-conversation-adoption'
+import {
+  CLI_CONVERSATION_ADOPTING_AGENTS,
+  namesCliConversation
+} from '../../../../shared/agent-session/view/structured-agent-cli-conversation-adoption'
+import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
+import { recordConversationKey } from '../../../native-chat/conversation-adoption/structured-conversation-key'
+import { terminalHandoverFences } from '../../../native-chat/conversation-adoption/structured-terminal-handover-fence'
 import { agentSessionRefusalError } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
 import type { CliWriterObservation } from '../../../agent-hooks/server/cli-writer-observation'
 import { forEachWithConcurrency } from '../../../../shared/concurrency/map-with-concurrency'
@@ -63,4 +69,50 @@ export async function assertCliConversationWritersExited(
       })
     }
   })
+}
+
+export type ChatConversationWriterHost = CliWriterHost & {
+  /** Whether the terminal process in this pane still runs. */
+  paneRunning: (paneKey: string) => boolean
+}
+
+/** One writer per conversation: a chat start, a hand-over or a same-id terminal resume of a chat's
+ *  conversation is refused while a fence holds it, a terminal launched to resume it is still open
+ *  (its spawn's resume row stands until the agent reports, also after a restart or with hooks
+ *  off), or a live terminal agent writes it. A `resume` check ignores resume fences, since one
+ *  may be this same resume's from an earlier check. */
+export async function assertChatConversationFreeOfTerminals(
+  host: ChatConversationWriterHost,
+  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'providerHandleChain'>,
+  admitting?: 'resume'
+): Promise<void> {
+  const head = record.providerHandleChain.at(-1)
+  const key = head ? recordConversationKey(record, head) : null
+  const id = key?.id
+  if (
+    !key ||
+    !id ||
+    !Object.values(CLI_CONVERSATION_ADOPTING_AGENTS).some((agents: readonly string[]) =>
+      agents.includes(record.provider)
+    )
+  ) {
+    return
+  }
+  const resumeOpen = host
+    .rows()
+    .some(
+      (row) =>
+        row.providerSessionOnly === true &&
+        !row.structuredHost &&
+        namesCliConversation(row, record.provider, id) &&
+        host.paneRunning(row.paneKey)
+    )
+  const fences: ('handover' | 'resume')[] =
+    admitting === 'resume' ? ['handover'] : ['handover', 'resume']
+  if (resumeOpen || terminalHandoverFences.holds(key, host.rows, fences)) {
+    throw agentSessionRefusalError('agent_session_conflict', {
+      reason: 'conversationHeldElsewhere'
+    })
+  }
+  await assertCliConversationWritersExited(host, record.provider, id)
 }
