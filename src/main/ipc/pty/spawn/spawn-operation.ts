@@ -171,7 +171,8 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
           agent: saved?.agent,
           providerSession: saved?.providerSession,
           ptyId: outcome.result.id,
-          connectionId: args.connectionId ?? saved?.connectionId
+          connectionId: args.connectionId ?? saved?.connectionId,
+          reattach: true
         })
       }
     }

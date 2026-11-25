@@ -49,7 +49,7 @@ export type AiVaultChatTerminalHandoverRefusal =
   | 'openInTerminal'
   | 'stopUnproven'
 
-/** `ready`: the chat's agent exited and the host holds its start until the terminal reports.
+/** `ready`: the chat's agent exited, and the host refuses its start while the terminal's PTY runs.
  *  `unsupported`: this chat's agent or host keeps the fork. */
 export type AiVaultChatTerminalHandoverResult =
   | { kind: 'unsupported' }

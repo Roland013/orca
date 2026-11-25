@@ -136,8 +136,8 @@ async function terminalHoldsConversation(
   }
 }
 
-/** The terminal is admitted by the same rule as any same-id resume: the head's owner exited. A
- *  chat whose agent never started has no owner to prove gone. */
+/** The terminal is admitted only once the head's owner is proven exited; every other same-id
+ *  resume stays refused. A chat whose agent never started has no owner to prove gone. */
 function stopUnproven(
   host: TerminalHandoverHost,
   sessionId: string

@@ -36,7 +36,7 @@ export async function runNativeChatTerminalHandover(args: {
     toast.error(handoverRefusalMessage(result.reason, args.agent))
     return 'handled'
   }
-  // A terminal that never opened must not keep the chat from starting until the fence lapses.
+  // A terminal that never opened must not keep the chat from starting until its hold lapses.
   const release = () =>
     void window.api.aiVault.releaseChatTerminalHandover(result.handoverId).catch(() => undefined)
   try {

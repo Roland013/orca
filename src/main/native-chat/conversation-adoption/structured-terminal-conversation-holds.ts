@@ -16,7 +16,7 @@ type Hold =
 
 /** Which chat conversations a terminal may be writing, from facts Orca owns on every platform,
  *  hooks on or off: a hand-over until its terminal's PTY spawns, then each PTY Orca spawned or
- *  reattached to resume the conversation, for as long as that PTY runs. Every process the terminal
+ *  reattached to resume a chat's head conversation, for as long as that PTY runs. Every process the terminal
  *  starts lives in its PTY, so a PTY that no longer runs writes nothing. Hook rows play no part. */
 class TerminalConversationHolds {
   private readonly entries = new Map<string, Hold>()
@@ -36,6 +36,15 @@ class TerminalConversationHolds {
       }
     }
     this.add({ kind: 'pty', key, ptyId, until: Date.now() + SPAWN_GRACE_MS })
+  }
+
+  /** A new process under this PTY id holds nothing its predecessor held. */
+  forgetPty(ptyId: string): void {
+    for (const [id, hold] of this.entries) {
+      if (hold.kind === 'pty' && hold.ptyId === ptyId) {
+        this.entries.delete(id)
+      }
+    }
   }
 
   /** A hand-over whose terminal never spawned. A PTY's hold ends only with that PTY. */

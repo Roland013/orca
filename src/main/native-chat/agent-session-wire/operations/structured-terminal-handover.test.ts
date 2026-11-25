@@ -13,6 +13,7 @@ import { eventually } from '../host/testing/structured-agent-session-queued-mess
 import { assertChatConversationFreeOfTerminals } from '../../../runtime/agent-session/lifecycle/structured-agent-cli-writers'
 import { holdTerminalResumedConversation } from '../../../ipc/pty/pane/resumed-conversation-hold'
 import { terminalConversationHolds } from '../../conversation-adoption/structured-terminal-conversation-holds'
+import { terminalConversationKey } from '../../conversation-adoption/structured-conversation-key'
 import { setStructuredAgentSessionHost } from '../host/structured-agent-session-registry'
 import {
   assertLegacyAiVaultResumeAllowed,
@@ -21,7 +22,8 @@ import {
 
 // "Continue in terminal" hands a Claude chat's own conversation to a terminal. Never two writers
 // on it: not the chat and the terminal, not two terminals. Nothing here rests on hooks naming a
-// process, which Windows hooks never do.
+// process, which Windows hooks never do. Only hand-over terminals hold: a Claude terminal of a
+// conversation no chat owns keeps main's behavior.
 let rig: QueuedMessageTestRig | null = null
 afterEach(async () => {
   setStructuredAgentSessionHost(null)
@@ -98,9 +100,33 @@ const IN_TERMINAL = { ok: false, reason: 'openInTerminal' }
 const REFUSED = 'agent_session_ownership_unknown'
 const owner = (chat: QueuedMessageTestRig) => chat.store.getRecord(SESSION)?.lease.ownerProcess
 
-it('never lets a chat and a terminal, or two terminals, write one Claude conversation', async () => {
+/** A Claude PTY spawn as both spawn paths report it. */
+function spawned(ptyId: string, conversationId: string): void {
+  runtime.ptys.set(ptyId, true)
+  holdTerminalResumedConversation({
+    agent: 'claude',
+    providerSession: { key: 'session_id', id: conversationId },
+    ptyId,
+    connectionId: null
+  })
+}
+
+/** A conversation no chat owns: a terminal resumed it from Session History. */
+const TERMINAL_ONLY = '2f4b8e1a-7c3d-4e5f-9a6b-0c1d2e3f4a5b'
+
+it('never lets two writers on one Claude conversation, and holds only hand-over terminals', async () => {
   rig = await idleClaudeChat()
+  setStructuredAgentSessionHost(null)
+  // App start: two Claude terminals are restored before the chat host is up. One is a hand-over
+  // terminal of the chat's conversation; the other resumed a conversation no chat owns.
+  spawned('pty-restored', THREAD)
+  spawned('pty-other', TERMINAL_ONLY)
   setStructuredAgentSessionHost(rig.host)
+  // The restored hand-over terminal holds the chat. The other holds nothing, as on main.
+  expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
+  const otherKey = terminalConversationKey('claude', TERMINAL_ONLY)
+  expect(terminalConversationHolds.holds(otherKey, (ptyId) => runtime.ptys.get(ptyId))).toBe(false)
+  runtime.ptys.set('pty-restored', false)
   const first = await rig.host.handOverToTerminal(SESSION)
   if (!first.ok) {
     throw new Error(`the idle chat was refused: ${first.reason}`)
@@ -109,13 +135,7 @@ it('never lets a chat and a terminal, or two terminals, write one Claude convers
   // Before the terminal's PTY spawns, the hand-over holds the conversation.
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
   // The PTY spawns resuming it and its agent reports the Windows way. The PTY alone holds now.
-  runtime.ptys.set('pty-1', true)
-  holdTerminalResumedConversation({
-    agent: 'claude',
-    providerSession: { key: 'session_id', id: THREAD },
-    ptyId: 'pty-1',
-    connectionId: null
-  })
+  spawned('pty-1', THREAD)
   terminalConversationHolds.releaseHandover(first.handoverId)
   runtime.rows = [windowsRow]
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
