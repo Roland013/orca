@@ -61,14 +61,24 @@ export function agentSessionLeasePossiblyWriting(lease: AgentSessionOwnerObserva
   return agentSessionOwnerObservationVerdict(lease) !== 'exited'
 }
 
-/** Agents whose chats let a terminal resume the same conversation once the chat stopped writing.
- *  Claude's `--resume` keeps the id, and its chat refuses to start while a terminal writes it. */
+/** Agents whose chats can hand their conversation to a terminal once the chat stopped writing.
+ *  Claude's `--resume` keeps the id, and Orca holds the conversation for the PTY it spawns. */
 export function sameIdTerminalResumeEnabled(provider: StructuredAgentId): boolean {
   return provider === 'claude'
 }
 
-/** Whether a terminal resume of this link's conversation is refused. */
-export function terminalResumeBlocked(holding: StructuredProviderSessionOwnership): boolean {
+/** Whether a sent or History terminal resume of this link's conversation is refused: always, as
+ *  before same-id hand-overs. Only Orca's own hand-over admits one (handoverTerminalResumeBlocked):
+ *  Orca spawns that terminal and holds the conversation while its PTY runs. */
+export function terminalResumeBlocked(_holding: StructuredProviderSessionOwnership): boolean {
+  return true
+}
+
+/** Whether the hand-over may give this link's conversation to a terminal: never for agents that
+ *  don't hand conversations over, and for the head only once its owner is proven gone. */
+export function handoverTerminalResumeBlocked(
+  holding: StructuredProviderSessionOwnership
+): boolean {
   return (
     !sameIdTerminalResumeEnabled(holding.provider) ||
     (holding.role === 'head' && agentSessionLeasePossiblyWriting(holding.ownerObservation))

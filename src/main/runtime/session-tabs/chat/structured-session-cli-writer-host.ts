@@ -78,12 +78,9 @@ export abstract class OrcaRuntimeWithStructuredSessionCliWriterHost extends Orca
     }
   }
 
-  /** A chat start or a same-id terminal resume of the chat's conversation; see the guard. */
-  protected assertStructuredChatAcquireAdmissible(
-    record: AgentSessionRecord,
-    admitting?: 'resume'
-  ): Promise<void> {
-    return assertChatConversationFreeOfTerminals(this.chatConversationWriters(), record, admitting)
+  /** Before a chat start or a hand-over of the chat's conversation; see the guard. */
+  protected assertStructuredChatAcquireAdmissible(record: AgentSessionRecord): Promise<void> {
+    return assertChatConversationFreeOfTerminals(this.chatConversationWriters(), record)
   }
 
   async assertStructuredAdoptionTerminalWritersExited(
@@ -108,7 +105,7 @@ export abstract class OrcaRuntimeWithStructuredSessionCliWriterHost extends Orca
         const context = this.createTerminalIdentityReadContext()
         return (paneKey) => this.getPtyRecordForPaneKey(paneKey, context)?.ptyId ?? null
       },
-      paneRunning: (paneKey) => this.getPtyRecordForPaneKey(paneKey)?.connected === true
+      ptyConnected: (ptyId) => this.ptysById.get(ptyId)?.connected
     }
   }
 }

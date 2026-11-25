@@ -5,12 +5,12 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 import {
   listStructuredProviderSessionOwnership,
   sameIdTerminalResumeEnabled,
-  terminalResumeBlocked
+  handoverTerminalResumeBlocked
 } from '../host/structured-provider-session-ownership'
 import { readHostStructuredAgentSessionWork } from '../observations/structured-agent-session-read-work'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import { recordConversationKey } from '../../conversation-adoption/structured-conversation-key'
-import { terminalHandoverFences } from '../../conversation-adoption/structured-terminal-handover-fence'
+import { terminalConversationHolds } from '../../conversation-adoption/structured-terminal-conversation-holds'
 
 type TerminalHandoverHost = Pick<
   StructuredAgentSessionMutationContext,
@@ -22,7 +22,7 @@ type TerminalHandoverHost = Pick<
 
 type Refused = { ok: false; reason: AiVaultChatTerminalHandoverRefusal }
 
-/** `handoverId` names the fence that keeps every other writer off until the terminal reports. */
+/** `handoverId` names the hold that keeps every other writer off until the terminal's PTY spawns. */
 export type StructuredTerminalHandover = { ok: true; handoverId: string } | Refused
 
 const COMMAND_REASONS: ReadonlySet<string> = new Set<AiVaultChatTerminalHandoverRefusal>([
@@ -36,7 +36,7 @@ const COMMAND_REASONS: ReadonlySet<string> = new Set<AiVaultChatTerminalHandover
 
 /** Stop an idle chat's agent with proof it exited, so a terminal can resume its conversation.
  *  Refused untouched while the chat works (the /clear check) or a terminal already holds the
- *  conversation (the chat-start check). The fence is held on the chat's lane before the stop, so
+ *  conversation (the chat-start check). The hold is taken on the chat's lane before the stop, so
  *  no start or second hand-over slips in after it; every refusal releases it. */
 export async function handOverStructuredChatToTerminal(
   host: TerminalHandoverHost,
@@ -55,13 +55,13 @@ export async function handOverStructuredChatToTerminal(
       if (reason || !key?.id) {
         return { ok: false, reason: reason ?? 'stopUnproven' }
       }
-      return { ok: true, handoverId: terminalHandoverFences.hold(record.provider, key, 'handover') }
+      return { ok: true, handoverId: terminalConversationHolds.holdHandover(key) }
     }
   )
   if (!admitted.ok) {
     return admitted
   }
-  const release = () => terminalHandoverFences.release(admitted.handoverId)
+  const release = () => terminalConversationHolds.releaseHandover(admitted.handoverId)
   try {
     // The idle sweep's own stop: it rechecks owed work and asks the provider before stopping.
     await host.releaseIdle(sessionId)
@@ -119,7 +119,8 @@ function isCommandReason(
   return reason != null && COMMAND_REASONS.has(reason)
 }
 
-/** The check a chat start makes: a fence, an open resumed terminal or a live terminal writer. */
+/** The check a chat start makes: a hand-over in flight, a resumed terminal's running PTY, or a
+ *  live terminal writer its hooks report. */
 async function terminalHoldsConversation(
   host: TerminalHandoverHost,
   sessionId: string
@@ -154,5 +155,5 @@ function stopUnproven(
   }
   const neverStarted =
     sameIdTerminalResumeEnabled(head.provider) && agentSessionLeaseNeverAcquired(record.lease)
-  return terminalResumeBlocked(head) && !neverStarted ? 'stopUnproven' : null
+  return handoverTerminalResumeBlocked(head) && !neverStarted ? 'stopUnproven' : null
 }

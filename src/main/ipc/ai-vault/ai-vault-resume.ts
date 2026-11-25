@@ -9,7 +9,7 @@ import type {
   AiVaultSessionResumePreparation
 } from '../../../shared/ai-vault/resume/ai-vault-resume-preparation'
 import { prepareStructuredChatTerminalHandover } from '../../ai-vault/structured-sessions/structured-chat-terminal-handover'
-import { terminalHandoverFences } from '../../native-chat/conversation-adoption/structured-terminal-handover-fence'
+import { terminalConversationHolds } from '../../native-chat/conversation-adoption/structured-terminal-conversation-holds'
 import {
   isUnresolvedOwnerHostId,
   parseExecutionHostId
@@ -54,7 +54,7 @@ export function registerAiVaultResumeHandler(options: AiVaultResumeHandlerOption
   )
   ipcMain.handle('aiVault:releaseChatTerminalHandover', (_event, handoverId: unknown) => {
     if (typeof handoverId === 'string') {
-      terminalHandoverFences.release(handoverId)
+      terminalConversationHolds.releaseHandover(handoverId)
     }
   })
 }
@@ -104,7 +104,7 @@ export async function prepareAiVaultSessionResume(
         ? tryEnsureStructuredAgentSessionHostForResume(options.ensureStructuredSessionOwnership)
         : options.ensureStructuredSessionOwnership())
     }
-    await assertLegacyAiVaultResumeAllowed(args)
+    assertLegacyAiVaultResumeAllowed(args)
   }
   return (
     (await copyStructuredChatConversation(args)) ??

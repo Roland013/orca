@@ -5,7 +5,7 @@ import {
   parseExecutionHostId,
   type ExecutionHostId
 } from '../../../../../shared/execution-host/execution-host'
-import { launchedLeafId, runNativeChatTerminalHandover } from './native-chat-terminal-handover-run'
+import { runNativeChatTerminalHandover } from './native-chat-terminal-handover-run'
 import { prepareNativeChatCliFork } from '@/lib/agent-session/resume/cli-fork/native-chat-cli-fork-preparation'
 import type { NativeChatCliForkSubject } from '@/lib/agent-session/resume/cli-fork/native-chat-cli-fork-preparation'
 import {
@@ -30,6 +30,7 @@ import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/dr
 import type { AppState } from '@/store/types'
 import type { AiVaultAgent } from '../../../../../shared/ai-vault/contracts/ai-vault-types'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
+import type { TerminalPaneLayoutNode } from '../../../../../shared/workspace-layout/terminal-tab-types'
 
 const pending = new Map<string, AbortController>()
 const listeners = new Set<() => void>()
@@ -46,6 +47,11 @@ const subscribe = (listener: () => void) => {
 const forkOrigins = new Map<string, { sessionId: string; workspaceId: string }>()
 const forkOriginKey = (workspaceId: string, providerSessionId: string) =>
   `${workspaceId}\0${providerSessionId}`
+
+/** The pane a new tab launched in; a split keeps it on the `first` side. */
+function launchedLeafId(node: TerminalPaneLayoutNode | null | undefined): string | undefined {
+  return !node ? undefined : node.type === 'leaf' ? node.leafId : launchedLeafId(node.first)
+}
 
 /** Binds the chat to the first conversation the fork's own pane reports, so a later one is not mistaken for it. */
 function rememberForkOrigin(

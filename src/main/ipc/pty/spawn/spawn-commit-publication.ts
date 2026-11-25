@@ -21,6 +21,7 @@ import {
 } from '../pane/serializer-state'
 import { seedTerminalRestoreRecordsFromSpawnResult } from '../pane/agent-session-owners'
 import { seedResumeLaunchIdentityFromSpawn } from '../pane/resume-launch-identity'
+import { holdTerminalResumedConversation } from '../pane/resumed-conversation-hold'
 import { recordAgentStartTelemetry } from '../pane/spawn-telemetry'
 import type { PtySpawnOutcome } from './spawn-outcome'
 import type { PtySpawnCommitInput, PtySpawnCommitState } from './spawn-commit-assembly'
@@ -114,6 +115,14 @@ export function publishCommittedPtySpawn(input: PtySpawnCommitInput): PtySpawnOu
         ? result.pid
         : null
   })
+  if (!result.isReattach && !input.resumeArgvDropped) {
+    holdTerminalResumedConversation({
+      agent: args.launchAgent,
+      providerSession: args.resumeProviderSession,
+      ptyId: result.id,
+      connectionId: args.connectionId
+    })
+  }
   // Rejected spawns must not leave a published resume identity.
   seedResumeLaunchIdentityFromSpawn({
     paneKey: input.paneKey,

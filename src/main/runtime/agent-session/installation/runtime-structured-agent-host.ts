@@ -147,7 +147,6 @@ export abstract class RuntimeStructuredAgentHost extends OrcaRuntimeWithStartTui
   >
 
   protected abstract assertStructuredChatAcquireAdmissible(
-    record: AgentSessionRecord,
-    admitting?: 'resume'
+    record: AgentSessionRecord
   ): Promise<void>
 }

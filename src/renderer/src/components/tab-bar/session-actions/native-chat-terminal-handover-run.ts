@@ -1,7 +1,6 @@
 import { toast } from 'sonner'
 import { useAppStore } from '@/store/index'
 import type { AppState } from '@/store/types'
-import type { TerminalPaneLayoutNode } from '../../../../../shared/workspace-layout/terminal-tab-types'
 import { translate } from '@/i18n/i18n'
 import { AiVaultChatForkSourceSchema } from '../../../../../shared/ai-vault/contracts/ai-vault-chat-fork-contract'
 import type { AiVaultAgent } from '../../../../../shared/ai-vault/contracts/ai-vault-types'
@@ -84,7 +83,7 @@ export async function runNativeChatTerminalHandover(args: {
       release()
       return 'handled'
     }
-    releaseIfEndedUnreported(subject.workspaceId, terminalTabId, result.source.sessionId, release)
+    releaseIfClosedUnspawned(subject.workspaceId, terminalTabId, release)
     // Direct close: the pin prompt belongs to the close commands, and the conversation moved on.
     useAppStore.getState().closeUnifiedTab(chatTab.id)
     return 'handled'
@@ -94,34 +93,15 @@ export async function runNativeChatTerminalHandover(args: {
   }
 }
 
-/** The pane a new tab launched in; a split keeps it on the `first` side. */
-export function launchedLeafId(
-  node: TerminalPaneLayoutNode | null | undefined
-): string | undefined {
-  return !node ? undefined : node.type === 'leaf' ? node.leafId : launchedLeafId(node.first)
-}
-
-/** Until the terminal's agent reports the conversation, the host holds it. A terminal closed or
- *  ended before that report would otherwise hold it until the fence lapses. */
-function releaseIfEndedUnreported(
-  worktreeId: string,
-  tabId: string,
-  conversationId: string,
-  release: () => void
-): void {
-  let spawned = false
+/** The terminal's PTY spawn takes over the hand-over's hold; a tab closed before it spawned would
+ *  otherwise keep the conversation held until that hold lapses. */
+function releaseIfClosedUnspawned(worktreeId: string, tabId: string, release: () => void): void {
   const settled = (state: AppState): boolean => {
     const tab = state.tabsByWorktree[worktreeId]?.find((item) => item.id === tabId)
-    spawned ||= Boolean(tab?.ptyId)
-    const leafId = launchedLeafId(state.terminalLayoutsByTabId[tabId]?.root)
-    const reported = leafId
-      ? state.agentStatusByPaneKey.get(`${tabId}:${leafId}`)?.providerSession?.id === conversationId
-      : false
-    if (!reported && (!tab || (spawned && !tab.ptyId))) {
+    if (!tab) {
       release()
-      return true
     }
-    return reported
+    return !tab || tab.ptyId !== null
   }
   if (settled(useAppStore.getState())) {
     return

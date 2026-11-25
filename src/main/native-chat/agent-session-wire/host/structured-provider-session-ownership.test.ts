@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import type { AgentSessionOwnerObservation } from '../../../../shared/agent-session/lifecycle/leases/agent-session-conversation-view'
 import {
+  handoverTerminalResumeBlocked,
   terminalResumeBlocked,
   type StructuredProviderSessionOwnership
 } from './structured-provider-session-ownership'
@@ -43,13 +44,16 @@ function holding(
   }
 }
 
-// The chat-to-terminal handover admits its terminal through this rule: one writer per conversation.
-it('lets a terminal resume a Claude chat conversation only once its owner is proven exited', () => {
-  expect(terminalResumeBlocked(holding('claude', LIVE))).toBe(true)
-  expect(terminalResumeBlocked(holding('claude', UNPROVEN))).toBe(true)
-  expect(terminalResumeBlocked(holding('claude', RELEASED))).toBe(false)
+// One writer per conversation: a terminal gets a chat's conversation only through Orca's own
+// hand-over, and only once the chat's agent is proven gone.
+it('lets a terminal take a Claude chat conversation only by hand-over, after a proven exit', () => {
+  expect(handoverTerminalResumeBlocked(holding('claude', LIVE))).toBe(true)
+  expect(handoverTerminalResumeBlocked(holding('claude', UNPROVEN))).toBe(true)
+  expect(handoverTerminalResumeBlocked(holding('claude', RELEASED))).toBe(false)
   // An earlier link is no longer the conversation the chat writes.
-  expect(terminalResumeBlocked(holding('claude', LIVE, 'earlier'))).toBe(false)
-  // Other agents' chats keep refusing same-id terminal resumes.
-  expect(terminalResumeBlocked(holding('codex', RELEASED))).toBe(true)
+  expect(handoverTerminalResumeBlocked(holding('claude', LIVE, 'earlier'))).toBe(false)
+  // Other agents' chats never hand over.
+  expect(handoverTerminalResumeBlocked(holding('codex', RELEASED))).toBe(true)
+  // A sent or History resume stays refused even after a proven exit.
+  expect(terminalResumeBlocked(holding('claude', RELEASED))).toBe(true)
 })

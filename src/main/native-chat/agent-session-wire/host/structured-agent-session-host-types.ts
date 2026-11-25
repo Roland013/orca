@@ -221,9 +221,9 @@ export type StructuredAgentSessionHostDeps = {
   onMessageAdmitted?: (message: AdmittedMessage) => void
   /** Advisory tab-hidden notice; failures are logged. */
   onSessionTabHidden?: (sessionId: string, tabId?: string) => void
-  /** Throws while a terminal may still write the record's head conversation; run before a spawn,
-   *  a hand-over, or (`resume`) a same-id terminal resume. */
-  assertNoTerminalWriter?: (record: AgentSessionRecord, admitting?: 'resume') => Promise<void>
+  /** Throws while a terminal may still write the record's head conversation; run before a spawn
+   *  and before a hand-over gives the conversation to a terminal. */
+  assertNoTerminalWriter?: (record: AgentSessionRecord) => Promise<void>
   /** Where every failure the host carries on past is reported. Required: a host without one would
    *  drop exactly the failures nobody sees in the UI. */
   logger: StructuredAgentSessionLogger

@@ -5,11 +5,11 @@ import type {
 } from '../../../shared/ai-vault/resume/ai-vault-resume-preparation'
 import { sameIdTerminalResumeEnabled } from '../../native-chat/agent-session-wire/host/structured-provider-session-ownership'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/host/structured-agent-session-registry'
-import { terminalHandoverFences } from '../../native-chat/conversation-adoption/structured-terminal-handover-fence'
+import { terminalConversationHolds } from '../../native-chat/conversation-adoption/structured-terminal-conversation-holds'
 import { prepareStructuredChatCliFork } from './structured-chat-cli-fork'
 
 /** "Continue in terminal" in place: stop the idle chat's agent, then hand its own conversation to
- *  a terminal. Nothing else may write it until that terminal reports or its tab closes unspawned. */
+ *  a terminal. Nothing else may write it while that terminal's PTY runs. */
 export async function prepareStructuredChatTerminalHandover(
   sourceChat: { sessionId: string; workspaceId: string },
   prepare: AiVaultSessionResumePreparation
@@ -37,7 +37,7 @@ export async function prepareStructuredChatTerminalHandover(
     !current ||
     agentSessionProviderHandleChainHead(current.providerHandleChain)?.linkId !== head.linkId
   ) {
-    terminalHandoverFences.release(handover.handoverId)
+    terminalConversationHolds.releaseHandover(handover.handoverId)
     throw new Error('The chat changed before the terminal could take it over.')
   }
   return {

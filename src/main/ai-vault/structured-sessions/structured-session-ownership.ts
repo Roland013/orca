@@ -10,6 +10,7 @@ import { acquiredAgentSessionAccount } from '../../../shared/agent-session/lifec
 import { CLAUDE_STRUCTURED_AGENT } from '../../claude/structured/claude-structured-agent-definition'
 import { normalizeRuntimePathForComparison } from '../../../shared/file-access/cross-platform-path'
 import { resolveOrcaManagedCodexHomePath } from '../../codex/configuration/homes/codex-home-paths'
+import { agentSessionOwnerObservationIsLive } from '../../../shared/agent-session/lifecycle/leases/agent-session-lease-adjudication'
 import { defaultAgentChatLabel } from '../../../shared/agent-session/conversation-naming/agent-session-chat-label'
 import type { AiVaultListResult } from '../../../shared/ai-vault/contracts/ai-vault-types'
 import { ownedRowLastTurnPreview } from './owned-history-row-content'
@@ -30,6 +31,7 @@ import {
 import { ensureStructuredAgentSessionHostUnlessRefused } from '../../runtime/agent-session/installation/structured-agent-session-host-refusal'
 import {
   listStructuredProviderSessionOwnership,
+  terminalResumeBlocked,
   type StructuredProviderSessionOwnership
 } from '../../native-chat/agent-session-wire/host/structured-provider-session-ownership'
 import type { StructuredAgentId } from '../../../shared/agent-session/lifecycle/provider-handles/agent-session-provider-handle'
@@ -41,7 +43,6 @@ import {
 import { STRUCTURED_AGENT_RUNTIME_METADATA } from '../../runtime/agent-session/installation/structured-agent-runtime-metadata'
 import type { StructuredAgentRuntimeMetadata } from '../../runtime/agent-session/installation/structured-agent-runtime-registration-types'
 import { commandName, commandProgramIndex, shellCommands } from './shell-command-words'
-import { admitTerminalResume } from './structured-terminal-resume-admission'
 
 /** Hide chat-owned rows from clients unable to open that agent’s chat. */
 export type StructuredChatOpener = (agent: StructuredAgentId) => boolean
@@ -199,12 +200,11 @@ function acquiredAccountHome(sessionId: string): AgentSessionAccountHome | undef
     : undefined
 }
 
-export async function assertLegacyAiVaultResumeAllowed(
-  args: AiVaultPrepareSessionResumeArgs
-): Promise<void> {
+export function assertLegacyAiVaultResumeAllowed(args: AiVaultPrepareSessionResumeArgs): void {
   // A fork writes a new conversation, and preparing its home never writes this one.
-  if (!args.fork) {
-    await admitTerminalResume(resumeOwnerships(args), false)
+  const blocking = args.fork ? undefined : resumeOwnerships(args).find(terminalResumeBlocked)
+  if (blocking) {
+    refuseLegacyWriter(blocking)
   }
 }
 
@@ -217,14 +217,14 @@ export async function assertLegacyAiVaultResumeCommandAllowed(
     return
   }
   await ensureStructuredAgentSessionHostUnlessRefused(ensureHost)
-  const resumed = listOwnership().filter((ownership) =>
-    invocations.some((invocation) => resumesOwnedSession(invocation, ownership))
-  )
-  // A targetless resume may open any of them, so no fence could name the one it writes.
-  await admitTerminalResume(
-    resumed,
-    invocations.some((invocation) => invocation.target === null)
-  )
+  for (const ownership of listOwnership()) {
+    if (
+      terminalResumeBlocked(ownership) &&
+      invocations.some((invocation) => resumesOwnedSession(invocation, ownership))
+    ) {
+      refuseLegacyWriter(ownership)
+    }
+  }
 }
 
 export function findResumeOwnership(
@@ -305,4 +305,12 @@ function parseResumeInvocations(command: string): ResumeInvocation[] {
     }
   }
   return invocations
+}
+
+function refuseLegacyWriter(ownership: StructuredProviderSessionOwnership): never {
+  throw new Error(
+    agentSessionOwnerObservationIsLive(ownership.ownerObservation)
+      ? 'agent_session_conflict'
+      : 'agent_session_ownership_unknown'
+  )
 }

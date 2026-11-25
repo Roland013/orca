@@ -28,6 +28,7 @@ import {
   savedResumeRecord,
   savedResumeResult
 } from '../host-env/saved-resume-admission'
+import { holdTerminalResumedConversation } from '../pane/resumed-conversation-hold'
 
 type SpawnAdapter<State extends PtySpawnOperationState> = {
   state: State
@@ -164,6 +165,14 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
       }
       if (!ctx.result.isReattach) {
         runtime?.rememberSavedTerminalLaunchResult?.(outcome.result.id, outcome.result)
+      } else {
+        const saved = savedResumeRecord(ctx.deps.store, facts.savedResumePaneKey ?? null)
+        holdTerminalResumedConversation({
+          agent: saved?.agent,
+          providerSession: saved?.providerSession,
+          ptyId: outcome.result.id,
+          connectionId: args.connectionId ?? saved?.connectionId
+        })
       }
     }
     finish(outcome)
