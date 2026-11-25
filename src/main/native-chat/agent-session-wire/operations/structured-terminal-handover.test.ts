@@ -28,6 +28,7 @@ import { makePaneKey } from '../../../../shared/workspace-layout/stable-pane-id'
 import type { SleepingAgentLaunchConfig } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import { setStructuredAgentSessionHost } from '../host/structured-agent-session-registry'
 import { buildAiVaultHandoverStartup } from '../../../../shared/ai-vault/resume/ai-vault-resume-startup'
+import { isChatTerminalHandoverLaunch } from '../../../../shared/ai-vault/resume/chat-terminal-handover-marker'
 import {
   assertLegacyAiVaultResumeAllowed,
   assertLegacyAiVaultResumeCommandAllowed
@@ -118,6 +119,7 @@ const IN_TERMINAL = { ok: false, reason: 'openInTerminal' }
 // The chat's agent is stopped, so the refusal says Orca can't vouch for who owns the conversation.
 const REFUSED = 'agent_session_ownership_unknown'
 const LEAF = '00000000-0000-4000-8000-000000000001'
+const OTHER_THREAD = '00000000-0000-4000-8000-0000000000aa'
 const owner = (chat: QueuedMessageTestRig) => chat.store.getRecord(SESSION)?.lease.ownerProcess
 
 /** The hand-over terminal's launch recipe, as the hand-over builds it; a restore reuses its saved copy. */
@@ -274,13 +276,20 @@ it('never lets two writers on one Claude conversation, and holds only hand-over 
   // Claude from its quit agent's row, unmarked, under the same PTY id; then its restart does,
   // under a new id. Each is the hand-over terminal restored, and holds.
   await restartOrca()
-  spawned('pty-1', THREAD, coldRestoredAfterQuitLaunch())
+  const restoredLaunch = coldRestoredAfterQuitLaunch()
+  expect(isChatTerminalHandoverLaunch(restoredLaunch)).toBe(false)
+  spawned('pty-1', THREAD, restoredLaunch)
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
   runtime.ptys.set('pty-1', false)
-  spawned('pty-1b', THREAD, coldRestoredAfterQuitLaunch(), paneOf('pty-1'))
+  spawned('pty-1b', THREAD, restoredLaunch, paneOf('pty-1'))
   expect(await rig.host.handOverToTerminal(SESSION)).toEqual(IN_TERMINAL)
-  // The terminal closes. Its leftover row holds nothing; the chat writes again.
+  // The pane then resumes another conversation, which no hand-over gave it: nothing holds that.
   runtime.ptys.set('pty-1b', false)
+  spawned('pty-1c', OTHER_THREAD, restoredLaunch, paneOf('pty-1'))
+  const other = terminalConversationKey('claude', OTHER_THREAD)
+  expect(terminalConversationHolds.holds(other, (ptyId) => runtime.ptys.get(ptyId))).toBe(false)
+  // The terminal closes. Its leftover row holds nothing; the chat writes again.
+  runtime.ptys.set('pty-1c', false)
   await rig.send('back in the chat').result
   await eventually(() => expect(owner(rig!)).not.toBeNull())
 })

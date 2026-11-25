@@ -105,8 +105,10 @@ class TerminalConversationHolds {
           saved.ptyId === spawned.ptyId ||
           (spawned.paneKey !== null && saved.paneKey === spawned.paneKey)
       )
+      this.forgetPty(spawned.ptyId)
       for (const saved of earlier) {
-        this.forgetPty(saved.ptyId)
+        // An earlier PTY in this pane may still run: its hold then ends with it.
+        this.forgetSavedPty(saved.ptyId)
       }
       const resumes = spawned.resumes
       if (!resumes) {
@@ -187,6 +189,10 @@ class TerminalConversationHolds {
         this.entries.delete(id)
       }
     }
+    this.forgetSavedPty(ptyId)
+  }
+
+  private forgetSavedPty(ptyId: string): void {
     if (this.saved.delete(ptyId)) {
       this.persist()
     }
