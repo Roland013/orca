@@ -2,6 +2,7 @@ import { afterEach, expect, it } from 'vitest'
 import type { AgentStatusIpcPayload } from '../../../../shared/agent-status/contracts/agent-status-ipc-payload'
 import type { AgentProcessVerdict } from '../../../../shared/agent-status/process/agent-process-presence'
 import {
+  HOST_TEST_NOW,
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD
 } from '../host/testing/structured-agent-session-host-test-data.test-fixture'
@@ -33,8 +34,8 @@ function terminalRow(spawnRowOnly: boolean): AgentStatusIpcPayload {
   return {
     paneKey: 'terminal-tab:leaf-1',
     connectionId: null,
-    receivedAt: Date.now(),
-    stateStartedAt: Date.now(),
+    receivedAt: HOST_TEST_NOW,
+    stateStartedAt: HOST_TEST_NOW,
     state: spawnRowOnly ? 'done' : 'working',
     prompt: '',
     agentType: 'claude',
